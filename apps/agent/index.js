@@ -4,6 +4,7 @@ const { google } = require("googleapis");
 const { prisma } = require("@gmail-agent/db");
 
 const SKIP_SENDERS = new Set(["no-reply@partnerpage.io"]);
+const GMAIL_EXCLUDE_QUERY = "-from:no-reply@partnerpage.io";
 
 function ensureLocalEnvLoaded() {
   if (process.env.NODE_ENV === "production") return;
@@ -89,6 +90,212 @@ async function upsertPeopleFromEmails(emails) {
   return idsByEmail;
 }
 
+async function listLatestMessageIds(gmail, maxMessages = 500) {
+  const ids = [];
+  let pageToken = undefined;
+
+  while (ids.length < maxMessages) {
+    const res = await gmail.users.messages.list({
+      userId: "me",
+      maxResults: Math.min(100, maxMessages - ids.length),
+      q: GMAIL_EXCLUDE_QUERY,
+      pageToken,
+    });
+    const refs = res.data.messages || [];
+    for (const r of refs) {
+      if (r.id) ids.push(r.id);
+    }
+    if (!res.data.nextPageToken || refs.length === 0) break;
+    pageToken = res.data.nextPageToken;
+  }
+
+  return ids;
+}
+
+async function listChangedMessageIds(gmail, startHistoryId) {
+  const ids = new Set();
+  let pageToken = undefined;
+
+  while (true) {
+    const res = await gmail.users.history.list({
+      userId: "me",
+      startHistoryId,
+      historyTypes: ["messageAdded"],
+      pageToken,
+      maxResults: 500,
+    });
+
+    const history = res.data.history || [];
+    for (const h of history) {
+      for (const add of h.messagesAdded || []) {
+        const id = add.message?.id;
+        if (id) ids.add(id);
+      }
+      // Some accounts may still provide messages collection, keep as fallback.
+      for (const m of h.messages || []) {
+        if (m?.id) ids.add(m.id);
+      }
+    }
+
+    if (!res.data.nextPageToken) break;
+    pageToken = res.data.nextPageToken;
+  }
+
+  return [...ids];
+}
+
+async function processMessage({ gmail, mailbox, messageId, profileEmail }) {
+  const msgRes = await gmail.users.messages.get({
+    userId: "me",
+    id: messageId,
+    format: "full",
+  });
+  const msg = msgRes.data;
+  if (!msg.id || !msg.threadId) return { skipped: true, created: 0, updated: 0 };
+
+  const headers = headerMap(msg.payload?.headers || []);
+  const subject = headers.get("subject") || null;
+  const fromRaw = headers.get("from") || "";
+  const toRaw = headers.get("to") || "";
+  const ccRaw = headers.get("cc") || "";
+  const bccRaw = headers.get("bcc") || "";
+  const fromEmail = extractEmail(fromRaw);
+  if (fromEmail && SKIP_SENDERS.has(fromEmail)) {
+    return { skipped: true, created: 0, updated: 0 };
+  }
+
+  const toEmails = extractEmails(toRaw);
+  const ccEmails = extractEmails(ccRaw);
+  const bccEmails = extractEmails(bccRaw);
+  const labelIds = msg.labelIds || [];
+  const isRead = !labelIds.includes("UNREAD");
+  const isStarred = labelIds.includes("STARRED");
+  const hasAttachments = JSON.stringify(msg.payload || {}).includes("attachmentId");
+
+  const allEmails = [
+    ...(fromEmail ? [fromEmail] : []),
+    ...toEmails,
+    ...ccEmails,
+    ...bccEmails,
+  ];
+  const personIds = await upsertPeopleFromEmails(allEmails);
+  const fromPersonId = fromEmail ? personIds.get(fromEmail) || null : null;
+  const direction = fromEmail === profileEmail ? "OUTBOUND" : "INBOUND";
+  const internalMs = msg.internalDate ? Number(msg.internalDate) : null;
+  const gmailInternalDate =
+    internalMs && Number.isFinite(internalMs) ? new Date(internalMs) : null;
+
+  const thread = await prisma.gmailThread.upsert({
+    where: {
+      mailboxId_gmailThreadId: {
+        mailboxId: mailbox.id,
+        gmailThreadId: msg.threadId,
+      },
+    },
+    update: {
+      subject,
+      snippet: msg.snippet || null,
+      lastMessageAt: gmailInternalDate,
+    },
+    create: {
+      mailboxId: mailbox.id,
+      gmailThreadId: msg.threadId,
+      subject,
+      snippet: msg.snippet || null,
+      lastMessageAt: gmailInternalDate,
+    },
+    select: { id: true },
+  });
+
+  const { textBody, htmlBody } = extractBodies(msg.payload);
+
+  const existing = await prisma.gmailMessage.findUnique({
+    where: {
+      mailboxId_gmailMessageId: {
+        mailboxId: mailbox.id,
+        gmailMessageId: msg.id,
+      },
+    },
+    select: { id: true },
+  });
+
+  const savedMessage = await prisma.gmailMessage.upsert({
+    where: {
+      mailboxId_gmailMessageId: {
+        mailboxId: mailbox.id,
+        gmailMessageId: msg.id,
+      },
+    },
+    update: {
+      threadId: thread.id,
+      gmailInternalDate,
+      direction,
+      subject,
+      snippet: msg.snippet || null,
+      textBody: textBody || null,
+      htmlBody: htmlBody || null,
+      fromPersonId,
+      isRead,
+      isStarred,
+      hasAttachments,
+      internetMessageId: headers.get("message-id") || null,
+      inReplyTo: headers.get("in-reply-to") || null,
+      references: headers.get("references") || null,
+      headersJson: msg.payload?.headers || null,
+      labelIdsJson: labelIds || null,
+      rawPayloadJson: msg.payload || null,
+    },
+    create: {
+      mailboxId: mailbox.id,
+      threadId: thread.id,
+      gmailMessageId: msg.id,
+      gmailInternalDate,
+      direction,
+      subject,
+      snippet: msg.snippet || null,
+      textBody: textBody || null,
+      htmlBody: htmlBody || null,
+      fromPersonId,
+      isRead,
+      isStarred,
+      hasAttachments,
+      internetMessageId: headers.get("message-id") || null,
+      inReplyTo: headers.get("in-reply-to") || null,
+      references: headers.get("references") || null,
+      headersJson: msg.payload?.headers || null,
+      labelIdsJson: labelIds || null,
+      rawPayloadJson: msg.payload || null,
+    },
+    select: { id: true },
+  });
+
+  await prisma.gmailMessageRecipient.deleteMany({
+    where: { messageId: savedMessage.id },
+  });
+
+  const recipientRows = [];
+  for (const email of toEmails) {
+    const personId = personIds.get(email);
+    if (personId) recipientRows.push({ messageId: savedMessage.id, personId, type: "TO" });
+  }
+  for (const email of ccEmails) {
+    const personId = personIds.get(email);
+    if (personId) recipientRows.push({ messageId: savedMessage.id, personId, type: "CC" });
+  }
+  for (const email of bccEmails) {
+    const personId = personIds.get(email);
+    if (personId) recipientRows.push({ messageId: savedMessage.id, personId, type: "BCC" });
+  }
+  if (recipientRows.length > 0) {
+    await prisma.gmailMessageRecipient.createMany({
+      data: recipientRows,
+      skipDuplicates: true,
+    });
+  }
+
+  return { skipped: false, created: existing ? 0 : 1, updated: existing ? 1 : 0 };
+}
+
 async function syncMailbox(mailbox, summary) {
   const clientId = process.env.GOOGLE_CLIENT_ID;
   const clientSecret = process.env.GOOGLE_CLIENT_SECRET;
@@ -129,169 +336,42 @@ async function syncMailbox(mailbox, summary) {
     const profileEmail = (profileRes.data.emailAddress || mailbox.email).toLowerCase();
     const currentHistoryId = profileRes.data.historyId || null;
 
-    const listRes = await gmail.users.messages.list({
-      userId: "me",
-      maxResults: 100,
-    });
-    const refs = listRes.data.messages || [];
+    let mode = "full";
+    let messageIds = [];
+    if (mailbox.lastHistoryId) {
+      try {
+        messageIds = await listChangedMessageIds(gmail, mailbox.lastHistoryId);
+        mode = "incremental";
+      } catch (e) {
+        const reason = e?.errors?.[0]?.reason || e?.code || "";
+        // If history cursor is stale/invalid, fallback to full resync.
+        if (reason === 404 || String(reason).toLowerCase().includes("history")) {
+          messageIds = await listLatestMessageIds(gmail, 500);
+          mode = "full-fallback";
+        } else {
+          throw e;
+        }
+      }
+    } else {
+      messageIds = await listLatestMessageIds(gmail, 500);
+      mode = "full-initial";
+    }
 
     let fetched = 0;
     let created = 0;
     let updated = 0;
 
-    for (const ref of refs) {
-      if (!ref.id) continue;
-      const msgRes = await gmail.users.messages.get({
-        userId: "me",
-        id: ref.id,
-        format: "full",
+    for (const messageId of messageIds) {
+      const result = await processMessage({
+        gmail,
+        mailbox,
+        messageId,
+        profileEmail,
       });
-      const msg = msgRes.data;
-      if (!msg.id || !msg.threadId) continue;
+      if (result.skipped) continue;
       fetched += 1;
-
-      const headers = headerMap(msg.payload?.headers || []);
-      const subject = headers.get("subject") || null;
-      const fromRaw = headers.get("from") || "";
-      const toRaw = headers.get("to") || "";
-      const ccRaw = headers.get("cc") || "";
-      const bccRaw = headers.get("bcc") || "";
-      const fromEmail = extractEmail(fromRaw);
-      if (fromEmail && SKIP_SENDERS.has(fromEmail)) {
-        continue;
-      }
-
-      const toEmails = extractEmails(toRaw);
-      const ccEmails = extractEmails(ccRaw);
-      const bccEmails = extractEmails(bccRaw);
-      const labelIds = msg.labelIds || [];
-      const isRead = !labelIds.includes("UNREAD");
-      const isStarred = labelIds.includes("STARRED");
-      const hasAttachments = JSON.stringify(msg.payload || {}).includes("attachmentId");
-
-      const allEmails = [
-        ...(fromEmail ? [fromEmail] : []),
-        ...toEmails,
-        ...ccEmails,
-        ...bccEmails,
-      ];
-      const personIds = await upsertPeopleFromEmails(allEmails);
-      const fromPersonId = fromEmail ? personIds.get(fromEmail) || null : null;
-      const direction = fromEmail === profileEmail ? "OUTBOUND" : "INBOUND";
-      const internalMs = msg.internalDate ? Number(msg.internalDate) : null;
-      const gmailInternalDate =
-        internalMs && Number.isFinite(internalMs) ? new Date(internalMs) : null;
-
-      const thread = await prisma.gmailThread.upsert({
-        where: {
-          mailboxId_gmailThreadId: {
-            mailboxId: mailbox.id,
-            gmailThreadId: msg.threadId,
-          },
-        },
-        update: {
-          subject,
-          snippet: msg.snippet || null,
-          lastMessageAt: gmailInternalDate,
-        },
-        create: {
-          mailboxId: mailbox.id,
-          gmailThreadId: msg.threadId,
-          subject,
-          snippet: msg.snippet || null,
-          lastMessageAt: gmailInternalDate,
-        },
-        select: { id: true },
-      });
-
-      const { textBody, htmlBody } = extractBodies(msg.payload);
-
-      const existing = await prisma.gmailMessage.findUnique({
-        where: {
-          mailboxId_gmailMessageId: {
-            mailboxId: mailbox.id,
-            gmailMessageId: msg.id,
-          },
-        },
-        select: { id: true },
-      });
-
-      const savedMessage = await prisma.gmailMessage.upsert({
-        where: {
-          mailboxId_gmailMessageId: {
-            mailboxId: mailbox.id,
-            gmailMessageId: msg.id,
-          },
-        },
-        update: {
-          threadId: thread.id,
-          gmailInternalDate,
-          direction,
-          subject,
-          snippet: msg.snippet || null,
-          textBody: textBody || null,
-          htmlBody: htmlBody || null,
-          fromPersonId,
-          isRead,
-          isStarred,
-          hasAttachments,
-          internetMessageId: headers.get("message-id") || null,
-          inReplyTo: headers.get("in-reply-to") || null,
-          references: headers.get("references") || null,
-          headersJson: msg.payload?.headers || null,
-          labelIdsJson: labelIds || null,
-          rawPayloadJson: msg.payload || null,
-        },
-        create: {
-          mailboxId: mailbox.id,
-          threadId: thread.id,
-          gmailMessageId: msg.id,
-          gmailInternalDate,
-          direction,
-          subject,
-          snippet: msg.snippet || null,
-          textBody: textBody || null,
-          htmlBody: htmlBody || null,
-          fromPersonId,
-          isRead,
-          isStarred,
-          hasAttachments,
-          internetMessageId: headers.get("message-id") || null,
-          inReplyTo: headers.get("in-reply-to") || null,
-          references: headers.get("references") || null,
-          headersJson: msg.payload?.headers || null,
-          labelIdsJson: labelIds || null,
-          rawPayloadJson: msg.payload || null,
-        },
-        select: { id: true },
-      });
-
-      if (existing) updated += 1;
-      else created += 1;
-
-      await prisma.gmailMessageRecipient.deleteMany({
-        where: { messageId: savedMessage.id },
-      });
-
-      const recipientRows = [];
-      for (const email of toEmails) {
-        const personId = personIds.get(email);
-        if (personId) recipientRows.push({ messageId: savedMessage.id, personId, type: "TO" });
-      }
-      for (const email of ccEmails) {
-        const personId = personIds.get(email);
-        if (personId) recipientRows.push({ messageId: savedMessage.id, personId, type: "CC" });
-      }
-      for (const email of bccEmails) {
-        const personId = personIds.get(email);
-        if (personId) recipientRows.push({ messageId: savedMessage.id, personId, type: "BCC" });
-      }
-      if (recipientRows.length > 0) {
-        await prisma.gmailMessageRecipient.createMany({
-          data: recipientRows,
-          skipDuplicates: true,
-        });
-      }
+      created += result.created;
+      updated += result.updated;
     }
 
     const mailboxUpdate = {
@@ -324,6 +404,8 @@ async function syncMailbox(mailbox, summary) {
     summary.mailboxes.push({
       mailboxId: mailbox.id,
       email: profileEmail,
+      mode,
+      changedCandidates: messageIds.length,
       fetched,
       created,
       updated,
