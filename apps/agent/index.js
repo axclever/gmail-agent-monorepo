@@ -6,7 +6,7 @@ exports.handler = async function handler() {
     return {
       statusCode: 200,
       body: JSON.stringify({
-        message: "Hello from Gmail agent (Lambda)",
+        message: "Hello from Gmail agent (Lambda) - upd",
         personCount: count,
       }),
     };
