@@ -1,0 +1,22 @@
+{
+  "name": "gmail-agent-monorepo",
+  "private": true,
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
+  "scripts": {
+    "db:generate": "dotenv -e .env -- npx prisma generate --schema packages/db/prisma/schema.prisma",
+    "db:migrate": "npm run db:migrate -w @gmail-agent/db",
+    "prisma:generate": "npx prisma generate --schema packages/db/prisma/schema.prisma",
+    "prisma:migrate:deploy": "npx prisma migrate deploy --schema packages/db/prisma/schema.prisma",
+    "build": "npm run build --workspaces --if-present",
+    "dev:admin": "npm run dev -w @gmail-agent/admin"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "devDependencies": {
+    "dotenv-cli": "^8.0.0"
+  }
+}

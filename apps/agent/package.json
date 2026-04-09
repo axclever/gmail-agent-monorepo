@@ -1,0 +1,12 @@
+{
+  "name": "@gmail-agent/agent",
+  "version": "0.0.1",
+  "private": true,
+  "main": "index.js",
+  "scripts": {
+    "db:generate": "npm run db:generate -w @gmail-agent/db"
+  },
+  "dependencies": {
+    "@gmail-agent/db": "*"
+  }
+}

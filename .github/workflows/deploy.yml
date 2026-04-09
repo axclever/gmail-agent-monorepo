@@ -1,0 +1,108 @@
+# Lambda + Prisma: отдельно от Vercel (админка деплоится интеграцией Vercel по apps/admin).
+# Не запускается при пушах только в apps/admin — см. paths ниже.
+
+name: Deploy Gmail Agent
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "apps/agent/**"
+      - "packages/db/**"
+      - "package.json"
+      - "package-lock.json"
+      - ".github/workflows/deploy.yml"
+  workflow_dispatch:
+
+permissions:
+  id-token: write
+  contents: read
+
+env:
+  AWS_REGION: us-east-1
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Use Node.js 20.x
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - name: Install dependencies
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          DIRECT_URL: ${{ secrets.DIRECT_URL }}
+        run: npm ci
+
+      - name: Run Prisma migrations
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          DIRECT_URL: ${{ secrets.DIRECT_URL }}
+        run: npm run prisma:migrate:deploy
+
+      - name: Generate Prisma client
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          DIRECT_URL: ${{ secrets.DIRECT_URL }}
+        run: npm run prisma:generate
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Ensure ECR repository exists
+        env:
+          AWS_LAMBDA_IMAGE_URI: ${{ secrets.AWS_LAMBDA_IMAGE_URI }}
+        run: |
+          IMAGE_URI="$AWS_LAMBDA_IMAGE_URI"
+          REPO_WITH_TAG="${IMAGE_URI#*/}"
+          REPO_NAME="${REPO_WITH_TAG%:*}"
+          if ! aws ecr describe-repositories --repository-names "$REPO_NAME" >/dev/null 2>&1; then
+            aws ecr create-repository --repository-name "$REPO_NAME" >/dev/null
+            echo "Created ECR repository $REPO_NAME"
+          else
+            echo "ECR repository $REPO_NAME already exists"
+          fi
+
+      - name: Build and tag Docker image
+        env:
+          AWS_LAMBDA_IMAGE_URI: ${{ secrets.AWS_LAMBDA_IMAGE_URI }}
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          DIRECT_URL: ${{ secrets.DIRECT_URL }}
+        run: |
+          docker build \
+            --build-arg DATABASE_URL="$DATABASE_URL" \
+            --build-arg DIRECT_URL="$DIRECT_URL" \
+            -f apps/agent/Dockerfile \
+            -t gmail-agent:${{ github.sha }} \
+            .
+          docker tag gmail-agent:${{ github.sha }} "$AWS_LAMBDA_IMAGE_URI"
+
+      - name: Push image to ECR
+        env:
+          AWS_LAMBDA_IMAGE_URI: ${{ secrets.AWS_LAMBDA_IMAGE_URI }}
+        run: docker push "$AWS_LAMBDA_IMAGE_URI"
+
+      - name: Deploy Lambda image
+        env:
+          AWS_LAMBDA_FUNCTION_NAME: ${{ secrets.AWS_LAMBDA_FUNCTION_NAME }}
+          AWS_LAMBDA_IMAGE_URI: ${{ secrets.AWS_LAMBDA_IMAGE_URI }}
+        run: |
+          aws lambda update-function-code \
+            --function-name "$AWS_LAMBDA_FUNCTION_NAME" \
+            --image-uri "$AWS_LAMBDA_IMAGE_URI"
