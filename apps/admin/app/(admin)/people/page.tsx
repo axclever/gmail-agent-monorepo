@@ -1,15 +1,18 @@
-import { prisma } from "@gmail-agent/db";
+import Link from "next/link";
 import { Card, Heading, Table, Text } from "@radix-ui/themes";
 import { requireAdmin } from "../(protected)/require-admin";
+import { getPeopleList } from "../people-data";
 
 export const dynamic = "force-dynamic";
 
+function fmtDate(value: Date | null | undefined) {
+  if (!value) return "-";
+  return new Date(value).toLocaleString();
+}
+
 export default async function PeoplePage() {
   await requireAdmin();
-
-  const people = await prisma.person.findMany({
-    orderBy: { createdAt: "desc" },
-  });
+  const people = await getPeopleList();
 
   return (
     <main>
@@ -32,14 +35,24 @@ export default async function PeoplePage() {
             <Table.Header>
               <Table.Row>
                 <Table.ColumnHeaderCell>Email</Table.ColumnHeaderCell>
-                <Table.ColumnHeaderCell>ID</Table.ColumnHeaderCell>
+                <Table.ColumnHeaderCell>Name</Table.ColumnHeaderCell>
+                <Table.ColumnHeaderCell>First seen</Table.ColumnHeaderCell>
+                <Table.ColumnHeaderCell>Last seen</Table.ColumnHeaderCell>
+                <Table.ColumnHeaderCell>Total messages</Table.ColumnHeaderCell>
+                <Table.ColumnHeaderCell>Total threads</Table.ColumnHeaderCell>
               </Table.Row>
             </Table.Header>
             <Table.Body>
               {people.map((p) => (
                 <Table.Row key={p.id}>
-                  <Table.RowHeaderCell>{p.email}</Table.RowHeaderCell>
-                  <Table.Cell>{p.id}</Table.Cell>
+                  <Table.RowHeaderCell>
+                    <Link href={`/people/${p.id}`}>{p.email}</Link>
+                  </Table.RowHeaderCell>
+                  <Table.Cell>{p.name || "-"}</Table.Cell>
+                  <Table.Cell>{fmtDate(p.firstSeenAt)}</Table.Cell>
+                  <Table.Cell>{fmtDate(p.lastSeenAt)}</Table.Cell>
+                  <Table.Cell>{p.totalMessages}</Table.Cell>
+                  <Table.Cell>{p.totalThreads}</Table.Cell>
                 </Table.Row>
               ))}
             </Table.Body>

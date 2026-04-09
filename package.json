@@ -11,7 +11,8 @@
     "prisma:generate": "npx prisma generate --schema packages/db/prisma/schema.prisma",
     "prisma:migrate:deploy": "npx prisma migrate deploy --schema packages/db/prisma/schema.prisma",
     "build": "npm run build --workspaces --if-present",
-    "dev:admin": "npm run dev -w @gmail-agent/admin"
+    "dev:admin": "npm run dev -w @gmail-agent/admin",
+    "agent:sync": "dotenv -e .env -- node -e \"require('./apps/agent/index.js').handler().then((r)=>console.log(JSON.stringify(r, null, 2))).catch((e)=>{console.error(e);process.exit(1);})\""
   },
   "engines": {
     "node": ">=20"

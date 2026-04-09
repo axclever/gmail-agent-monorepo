@@ -13,6 +13,34 @@ enum Role {
   ADMIN
 }
 
+enum MailboxProvider {
+  GMAIL
+}
+
+enum MailboxStatus {
+  ACTIVE
+  PAUSED
+  ERROR
+}
+
+enum MessageDirection {
+  INBOUND
+  OUTBOUND
+}
+
+enum RecipientType {
+  TO
+  CC
+  BCC
+}
+
+enum ClassificationKind {
+  CATEGORY
+  INTENT
+  PRIORITY
+  REPLY_NEEDED
+}
+
 model User {
   id            String    @id @default(cuid())
   name          String?
@@ -23,6 +51,8 @@ model User {
 
   accounts      Account[]
   sessions      Session[]
+
+  gmailMailboxes GmailMailbox[]
 
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
@@ -45,6 +75,7 @@ model Account {
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([provider, providerAccountId])
+  @@index([userId])
 }
 
 model Session {
@@ -54,6 +85,8 @@ model Session {
   expires      DateTime
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
 }
 
 model VerificationToken {
@@ -65,8 +98,165 @@ model VerificationToken {
 }
 
 model Person {
-  id        String   @id @default(cuid())
-  email     String   @unique
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id            String   @id @default(cuid())
+  email         String   @unique
+  name          String?
+  firstSeenAt   DateTime?
+  lastSeenAt    DateTime?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  sentMessages      GmailMessage[]         @relation("MessageFromPerson")
+  receivedMessages  GmailMessageRecipient[]
+
+  @@index([email])
+}
+
+model GmailMailbox {
+  id                    String          @id @default(cuid())
+  userId                String
+  provider              MailboxProvider @default(GMAIL)
+  status                MailboxStatus   @default(ACTIVE)
+
+  /// Email address of the connected Gmail inbox
+  email                 String
+  googleAccountId       String?
+
+  /// Tokens for mailbox access, separate from app auth if needed
+  accessToken           String?
+  refreshToken          String?
+  tokenExpiresAt        DateTime?
+
+  /// Gmail incremental sync cursor
+  lastHistoryId         String?
+  lastSyncedAt          DateTime?
+
+  createdAt             DateTime        @default(now())
+  updatedAt             DateTime        @updatedAt
+
+  user                  User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  threads               GmailThread[]
+  messages              GmailMessage[]
+  syncRuns              GmailSyncRun[]
+
+  @@unique([userId, email])
+  @@index([userId])
+  @@index([status])
+}
+
+model GmailThread {
+  id               String         @id @default(cuid())
+  mailboxId        String
+  gmailThreadId    String
+  subject          String?
+  snippet          String?
+  messageCount     Int            @default(0)
+  lastMessageAt    DateTime?
+  createdAt        DateTime       @default(now())
+  updatedAt        DateTime       @updatedAt
+
+  mailbox          GmailMailbox   @relation(fields: [mailboxId], references: [id], onDelete: Cascade)
+  messages         GmailMessage[]
+
+  @@unique([mailboxId, gmailThreadId])
+  @@index([mailboxId])
+  @@index([lastMessageAt])
+}
+
+model GmailMessage {
+  id                String                 @id @default(cuid())
+  mailboxId         String
+  threadId          String
+  gmailMessageId    String
+  gmailInternalDate DateTime?
+
+  direction         MessageDirection
+  subject           String?
+  snippet           String?
+  textBody          String?
+  htmlBody          String?
+
+  fromPersonId      String?
+
+  isRead            Boolean?
+  isStarred         Boolean?
+  hasAttachments    Boolean                @default(false)
+
+  internetMessageId String?
+  inReplyTo         String?
+  references        String?
+
+  /// raw Gmail data for future reprocessing/debugging
+  headersJson       Json?
+  labelIdsJson      Json?
+  rawPayloadJson    Json?
+
+  createdAt         DateTime               @default(now())
+  updatedAt         DateTime               @updatedAt
+
+  mailbox           GmailMailbox           @relation(fields: [mailboxId], references: [id], onDelete: Cascade)
+  thread            GmailThread            @relation(fields: [threadId], references: [id], onDelete: Cascade)
+  fromPerson        Person?                @relation("MessageFromPerson", fields: [fromPersonId], references: [id], onDelete: SetNull)
+
+  recipients        GmailMessageRecipient[]
+  classifications   GmailMessageClassification[]
+
+  @@unique([mailboxId, gmailMessageId])
+  @@index([mailboxId])
+  @@index([threadId])
+  @@index([fromPersonId])
+  @@index([gmailInternalDate])
+  @@index([direction])
+}
+
+model GmailMessageRecipient {
+  id         String         @id @default(cuid())
+  messageId   String
+  personId    String
+  type        RecipientType
+
+  createdAt   DateTime       @default(now())
+
+  message     GmailMessage    @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  person      Person          @relation(fields: [personId], references: [id], onDelete: Cascade)
+
+  @@unique([messageId, personId, type])
+  @@index([messageId])
+  @@index([personId])
+  @@index([type])
+}
+
+model GmailMessageClassification {
+  id          String              @id @default(cuid())
+  messageId    String
+  kind         ClassificationKind
+  value        String
+  confidence   Float?
+  model        String?
+  rawJson      Json?
+  createdAt    DateTime            @default(now())
+
+  message      GmailMessage        @relation(fields: [messageId], references: [id], onDelete: Cascade)
+
+  @@index([messageId])
+  @@index([kind])
+  @@index([value])
+}
+
+model GmailSyncRun {
+  id             String         @id @default(cuid())
+  mailboxId       String
+  status          String
+  startedAt       DateTime      @default(now())
+  finishedAt      DateTime?
+  fetchedCount    Int           @default(0)
+  newCount        Int           @default(0)
+  updatedCount    Int           @default(0)
+  errorText       String?
+
+  mailbox         GmailMailbox  @relation(fields: [mailboxId], references: [id], onDelete: Cascade)
+
+  @@index([mailboxId])
+  @@index([startedAt])
+  @@index([status])
 }
