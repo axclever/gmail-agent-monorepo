@@ -2,13 +2,14 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Inbox, LayoutGrid, Users } from "lucide-react";
+import { Inbox, ListChecks, SlidersHorizontal, Users } from "lucide-react";
 import { Box, Button, Flex } from "@radix-ui/themes";
 
 const NAV_ITEMS = [
   { href: "/inbox", label: "Inbox / Threads", Icon: Inbox },
-  { href: "/main", label: "Main", Icon: LayoutGrid },
   { href: "/people", label: "People", Icon: Users },
+  { href: "/rules", label: "Rules", Icon: SlidersHorizontal },
+  { href: "/actions", label: "Actions", Icon: ListChecks },
 ];
 
 export function SidebarNav() {

@@ -18,7 +18,15 @@ function listEmails(
   return rows.length ? rows.join(", ") : "-";
 }
 
-export function ThreadDetailCard({ detail }: { detail: Detail }) {
+export function ThreadDetailCard({
+  detail,
+  showRawDebug = true,
+  timelineMaxHeight,
+}: {
+  detail: Detail;
+  showRawDebug?: boolean;
+  timelineMaxHeight?: string | number;
+}) {
   if (!detail) {
     return (
       <Card size="3">
@@ -70,60 +78,74 @@ export function ThreadDetailCard({ detail }: { detail: Detail }) {
       <Card size="3">
         <Flex direction="column" gap="3">
           <Heading size="3">Timeline</Heading>
-          {thread.messages.map((msg) => (
-            <Box key={msg.id}>
-              <Flex align="center" gap="2" justify="between">
-                <Flex align="center" gap="2">
-                  <Badge color={msg.direction === "INBOUND" ? "blue" : "green"}>
-                    {msg.direction.toLowerCase()}
-                  </Badge>
-                  <Text size="2" color="gray">
-                    {fmtDate(msg.gmailInternalDate)}
-                  </Text>
-                </Flex>
-                <Link href={`/threads/${thread.id}`}>open</Link>
-              </Flex>
-              <Text size="2" style={{ marginTop: 6 }}>
-                From: {msg.fromPerson?.email || "-"}
-              </Text>
-              <Text size="1" color="gray">
-                To: {listEmails(msg.recipients, "TO")}
-              </Text>
-              <Text size="1" color="gray">
-                Cc: {listEmails(msg.recipients, "CC")}
-              </Text>
-              <Text size="2" color="gray" style={{ marginTop: 6 }}>
-                {msg.snippet || msg.textBody || msg.htmlBody || "-"}
-              </Text>
-              <Separator size="4" style={{ marginTop: 10 }} />
-            </Box>
-          ))}
-        </Flex>
-      </Card>
-
-      <Card size="3">
-        <details>
-          <summary style={{ cursor: "pointer", fontWeight: 600 }}>Raw / debug</summary>
-          <Box style={{ marginTop: 10 }}>
+          <Box
+            style={
+              timelineMaxHeight
+                ? {
+                    maxHeight: timelineMaxHeight,
+                    overflowY: "auto",
+                    paddingRight: 2,
+                  }
+                : undefined
+            }
+            className={timelineMaxHeight ? "smart-scroll" : undefined}
+          >
             {thread.messages.map((msg) => (
-              <Box key={msg.id} style={{ marginBottom: 14 }}>
+              <Box key={msg.id}>
+                <Flex align="center" gap="2" justify="between">
+                  <Flex align="center" gap="2">
+                    <Badge color={msg.direction === "INBOUND" ? "blue" : "green"}>
+                      {msg.direction.toLowerCase()}
+                    </Badge>
+                    <Text size="2" color="gray">
+                      {fmtDate(msg.gmailInternalDate)}
+                    </Text>
+                  </Flex>
+                  <Link href={`/threads/${thread.id}`}>open</Link>
+                </Flex>
+                <Text size="2" style={{ marginTop: 6 }}>
+                  From: {msg.fromPerson?.email || "-"}
+                </Text>
                 <Text size="1" color="gray">
-                  Gmail message id: {msg.gmailMessageId}
+                  To: {listEmails(msg.recipients, "TO")}
                 </Text>
-                <Text size="1" color="gray" style={{ display: "block" }}>
-                  Labels: {JSON.stringify(msg.labelIdsJson || [])}
+                <Text size="1" color="gray">
+                  Cc: {listEmails(msg.recipients, "CC")}
                 </Text>
-                <Text size="1" color="gray" style={{ display: "block" }}>
-                  Raw payload: {JSON.stringify(msg.rawPayloadJson || {})}
+                <Text size="2" color="gray" style={{ marginTop: 6 }}>
+                  {msg.snippet || msg.textBody || msg.htmlBody || "-"}
                 </Text>
+                <Separator size="4" style={{ marginTop: 10 }} />
               </Box>
             ))}
-            <Text size="1" color="gray">
-              Classification raw json: {JSON.stringify(summary.raw || [])}
-            </Text>
           </Box>
-        </details>
+        </Flex>
       </Card>
+      {showRawDebug ? (
+        <Card size="3">
+          <details>
+            <summary style={{ cursor: "pointer", fontWeight: 600 }}>Raw / debug</summary>
+            <Box style={{ marginTop: 10 }}>
+              {thread.messages.map((msg) => (
+                <Box key={msg.id} style={{ marginBottom: 14 }}>
+                  <Text size="1" color="gray">
+                    Gmail message id: {msg.gmailMessageId}
+                  </Text>
+                  <Text size="1" color="gray" style={{ display: "block" }}>
+                    Labels: {JSON.stringify(msg.labelIdsJson || [])}
+                  </Text>
+                  <Text size="1" color="gray" style={{ display: "block" }}>
+                    Raw payload: {JSON.stringify(msg.rawPayloadJson || {})}
+                  </Text>
+                </Box>
+              ))}
+              <Text size="1" color="gray">
+                Classification raw json: {JSON.stringify(summary.raw || [])}
+              </Text>
+            </Box>
+          </details>
+        </Card>
+      ) : null}
     </Flex>
   );
 }

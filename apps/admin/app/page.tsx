@@ -34,5 +34,5 @@ export default async function Home() {
     );
   }
 
-  redirect("/main");
+  redirect("/inbox");
 }

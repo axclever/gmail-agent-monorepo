@@ -26,13 +26,13 @@ export async function GET(request: Request) {
   const url = new URL(request.url);
   const code = url.searchParams.get("code");
   if (!code) {
-    return NextResponse.redirect(new URL("/main?gmail=missing_code", request.url));
+    return NextResponse.redirect(new URL("/inbox?gmail=missing_code", request.url));
   }
 
   const clientId = process.env.GOOGLE_CLIENT_ID;
   const clientSecret = process.env.GOOGLE_CLIENT_SECRET;
   if (!clientId || !clientSecret) {
-    return NextResponse.redirect(new URL("/main?gmail=missing_env", request.url));
+    return NextResponse.redirect(new URL("/inbox?gmail=missing_env", request.url));
   }
 
   const appBaseUrl = process.env.NEXTAUTH_URL || url.origin;
@@ -51,12 +51,12 @@ export async function GET(request: Request) {
   });
 
   if (!tokenRes.ok) {
-    return NextResponse.redirect(new URL("/main?gmail=token_error", request.url));
+    return NextResponse.redirect(new URL("/inbox?gmail=token_error", request.url));
   }
 
   const tokens = (await tokenRes.json()) as GoogleTokenResponse;
   if (!tokens.access_token) {
-    return NextResponse.redirect(new URL("/main?gmail=token_error", request.url));
+    return NextResponse.redirect(new URL("/inbox?gmail=token_error", request.url));
   }
 
   const meRes = await fetch("https://www.googleapis.com/oauth2/v3/userinfo", {
@@ -64,7 +64,7 @@ export async function GET(request: Request) {
   });
 
   if (!meRes.ok) {
-    return NextResponse.redirect(new URL("/main?gmail=userinfo_error", request.url));
+    return NextResponse.redirect(new URL("/inbox?gmail=userinfo_error", request.url));
   }
 
   const me = (await meRes.json()) as GoogleUserInfo;
@@ -103,6 +103,6 @@ export async function GET(request: Request) {
     });
   }
 
-  return NextResponse.redirect(new URL("/main?gmail=connected", request.url));
+  return NextResponse.redirect(new URL("/inbox?gmail=connected", request.url));
 }
 

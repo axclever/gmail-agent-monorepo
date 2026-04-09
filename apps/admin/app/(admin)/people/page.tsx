@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Card, Heading, Table, Text } from "@radix-ui/themes";
+import { Box, Flex, Heading, Table, Text } from "@radix-ui/themes";
 import { requireAdmin } from "../(protected)/require-admin";
 import { getPeopleList } from "../people-data";
 
@@ -15,51 +15,56 @@ export default async function PeoplePage() {
   const people = await getPeopleList();
 
   return (
-    <main>
-      <Heading size="7" style={{ marginBottom: "0.25rem" }}>
-        People
-      </Heading>
-      <Text size="2" color="gray" style={{ marginBottom: "1.25rem" }}>
-        All people in database
-      </Text>
-
-      <Card size="4">
-        <Text size="2" color="gray" style={{ marginBottom: "0.75rem" }}>
-          People ({people.length})
+    <Flex direction="column" gap="4">
+      <Box>
+        <Heading size="7">People</Heading>
+        <Text size="2" color="gray">
+          Contacts discovered from synced Gmail messages.
         </Text>
-
-        {people.length === 0 ? (
-          <Text color="gray">No people found.</Text>
-        ) : (
-          <Table.Root variant="surface">
-            <Table.Header>
-              <Table.Row>
-                <Table.ColumnHeaderCell>Email</Table.ColumnHeaderCell>
-                <Table.ColumnHeaderCell>Name</Table.ColumnHeaderCell>
-                <Table.ColumnHeaderCell>First seen</Table.ColumnHeaderCell>
-                <Table.ColumnHeaderCell>Last seen</Table.ColumnHeaderCell>
-                <Table.ColumnHeaderCell>Total messages</Table.ColumnHeaderCell>
-                <Table.ColumnHeaderCell>Total threads</Table.ColumnHeaderCell>
+      </Box>
+      {people.length === 0 ? (
+        <Text color="gray">No people found.</Text>
+      ) : (
+        <Table.Root variant="surface">
+          <Table.Header>
+            <Table.Row>
+              <Table.ColumnHeaderCell>Email</Table.ColumnHeaderCell>
+              <Table.ColumnHeaderCell>Name</Table.ColumnHeaderCell>
+              <Table.ColumnHeaderCell>First seen</Table.ColumnHeaderCell>
+              <Table.ColumnHeaderCell>Last seen</Table.ColumnHeaderCell>
+              <Table.ColumnHeaderCell justify="end">Total messages</Table.ColumnHeaderCell>
+              <Table.ColumnHeaderCell justify="end">Total threads</Table.ColumnHeaderCell>
+            </Table.Row>
+          </Table.Header>
+          <Table.Body>
+            {people.map((p) => (
+              <Table.Row key={p.id}>
+                <Table.RowHeaderCell style={{ maxWidth: 320 }}>
+                  <Link
+                    href={`/people/${p.id}`}
+                    style={{
+                      display: "inline-block",
+                      maxWidth: "100%",
+                      overflow: "hidden",
+                      textOverflow: "ellipsis",
+                      whiteSpace: "nowrap",
+                      verticalAlign: "bottom",
+                    }}
+                  >
+                    {p.email}
+                  </Link>
+                </Table.RowHeaderCell>
+                <Table.Cell>{p.name || "-"}</Table.Cell>
+                <Table.Cell>{fmtDate(p.firstSeenAt)}</Table.Cell>
+                <Table.Cell>{fmtDate(p.lastSeenAt)}</Table.Cell>
+                <Table.Cell align="right">{p.totalMessages}</Table.Cell>
+                <Table.Cell align="right">{p.totalThreads}</Table.Cell>
               </Table.Row>
-            </Table.Header>
-            <Table.Body>
-              {people.map((p) => (
-                <Table.Row key={p.id}>
-                  <Table.RowHeaderCell>
-                    <Link href={`/people/${p.id}`}>{p.email}</Link>
-                  </Table.RowHeaderCell>
-                  <Table.Cell>{p.name || "-"}</Table.Cell>
-                  <Table.Cell>{fmtDate(p.firstSeenAt)}</Table.Cell>
-                  <Table.Cell>{fmtDate(p.lastSeenAt)}</Table.Cell>
-                  <Table.Cell>{p.totalMessages}</Table.Cell>
-                  <Table.Cell>{p.totalThreads}</Table.Cell>
-                </Table.Row>
-              ))}
-            </Table.Body>
-          </Table.Root>
-        )}
-      </Card>
-    </main>
+            ))}
+          </Table.Body>
+        </Table.Root>
+      )}
+    </Flex>
   );
 }
 

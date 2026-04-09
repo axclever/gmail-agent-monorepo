@@ -39,6 +39,7 @@ enum ClassificationKind {
   INTENT
   PRIORITY
   REPLY_NEEDED
+  MESSAGE_TYPE
 }
 
 model User {
@@ -138,6 +139,8 @@ model GmailMailbox {
   threads               GmailThread[]
   messages              GmailMessage[]
   syncRuns              GmailSyncRun[]
+  rules                 GmailRule[]
+  decisions             GmailDecision[]
 
   @@unique([userId, email])
   @@index([userId])
@@ -150,17 +153,33 @@ model GmailThread {
   gmailThreadId    String
   subject          String?
   snippet          String?
+  summary          String?
+  lastIntent       String?
+  priority         String?
+  replyNeeded      Boolean?
+  needsReply       Boolean?
+  waitingOnOtherParty Boolean?
+  status           String?
   messageCount     Int            @default(0)
   lastMessageAt    DateTime?
+  lastMessageDirection MessageDirection?
+  lastInboundAt    DateTime?
+  lastOutboundAt   DateTime?
+  hasUnrepliedInbound Boolean?    @default(false)
   createdAt        DateTime       @default(now())
   updatedAt        DateTime       @updatedAt
 
   mailbox          GmailMailbox   @relation(fields: [mailboxId], references: [id], onDelete: Cascade)
   messages         GmailMessage[]
+  classifications  GmailThreadClassification[]
+  decisions        GmailDecision[]
 
   @@unique([mailboxId, gmailThreadId])
   @@index([mailboxId])
   @@index([lastMessageAt])
+  @@index([status])
+  @@index([needsReply])
+  @@index([hasUnrepliedInbound])
 }
 
 model GmailMessage {
@@ -190,6 +209,8 @@ model GmailMessage {
   headersJson       Json?
   labelIdsJson      Json?
   rawPayloadJson    Json?
+  classificationStatus String?
+  classifiedAt      DateTime?
 
   createdAt         DateTime               @default(now())
   updatedAt         DateTime               @updatedAt
@@ -200,6 +221,7 @@ model GmailMessage {
 
   recipients        GmailMessageRecipient[]
   classifications   GmailMessageClassification[]
+  decisions         GmailDecision[]
 
   @@unique([mailboxId, gmailMessageId])
   @@index([mailboxId])
@@ -243,6 +265,23 @@ model GmailMessageClassification {
   @@index([value])
 }
 
+model GmailThreadClassification {
+  id          String              @id @default(cuid())
+  threadId    String
+  kind        ClassificationKind
+  value       String
+  confidence  Float?
+  model       String?
+  rawJson     Json?
+  createdAt   DateTime            @default(now())
+
+  thread      GmailThread         @relation(fields: [threadId], references: [id], onDelete: Cascade)
+
+  @@index([threadId])
+  @@index([kind])
+  @@index([value])
+}
+
 model GmailSyncRun {
   id             String         @id @default(cuid())
   mailboxId       String
@@ -259,4 +298,67 @@ model GmailSyncRun {
   @@index([mailboxId])
   @@index([startedAt])
   @@index([status])
+}
+
+model GmailRule {
+  id              String      @id @default(cuid())
+  mailboxId       String
+  name            String
+  priority        Int         @default(100)
+  isActive        Boolean     @default(true)
+  conditionsJson  Json?
+  actionType      String
+  actionConfigJson Json?
+  stopProcessing  Boolean     @default(false)
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+
+  mailbox         GmailMailbox @relation(fields: [mailboxId], references: [id], onDelete: Cascade)
+  decisions       GmailDecision[]
+
+  @@index([mailboxId])
+  @@index([isActive])
+  @@index([priority])
+}
+
+model GmailDecision {
+  id            String      @id @default(cuid())
+  mailboxId     String
+  threadId      String
+  messageId     String?
+  ruleId        String?
+  decisionType  String
+  status        String
+  reason        String?
+  createdAt     DateTime    @default(now())
+
+  mailbox       GmailMailbox @relation(fields: [mailboxId], references: [id], onDelete: Cascade)
+  thread        GmailThread  @relation(fields: [threadId], references: [id], onDelete: Cascade)
+  message       GmailMessage? @relation(fields: [messageId], references: [id], onDelete: SetNull)
+  rule          GmailRule?   @relation(fields: [ruleId], references: [id], onDelete: SetNull)
+  actions       GmailAction[]
+
+  @@index([mailboxId])
+  @@index([threadId])
+  @@index([messageId])
+  @@index([ruleId])
+  @@index([status])
+}
+
+model GmailAction {
+  id          String       @id @default(cuid())
+  decisionId  String
+  type        String
+  status      String
+  payloadJson Json?
+  resultJson  Json?
+  errorText   String?
+  executedAt  DateTime?
+  createdAt   DateTime     @default(now())
+
+  decision    GmailDecision @relation(fields: [decisionId], references: [id], onDelete: Cascade)
+
+  @@index([decisionId])
+  @@index([status])
+  @@index([type])
 }
