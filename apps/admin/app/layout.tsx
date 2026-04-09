@@ -1,4 +1,6 @@
 import type { Metadata } from "next";
+import "@radix-ui/themes/styles.css";
+import { Theme } from "@radix-ui/themes";
 
 export const metadata: Metadata = {
   title: "Gmail Agent Admin",
@@ -11,8 +13,10 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en">
-      <body style={{ fontFamily: "system-ui", padding: "2rem" }}>
-        {children}
+      <body style={{ margin: 0 }}>
+        <Theme appearance="dark" accentColor="indigo" grayColor="slate">
+          {children}
+        </Theme>
       </body>
     </html>
   );
