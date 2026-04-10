@@ -4,7 +4,7 @@ import { Badge, Box, Card, Flex, Heading, Text } from "@radix-ui/themes";
 import { requireAdmin } from "../(protected)/require-admin";
 import { getThreadDetail, getThreadsList } from "../threads-data";
 import { ThreadDetailCard } from "../thread-detail-card";
-import { formatThreadLastActivity, isReplyRequired } from "../thread-inbox-utils";
+import { formatThreadLastActivity } from "../thread-inbox-utils";
 import { InboxSearchForm } from "./inbox-search-form";
 
 export const dynamic = "force-dynamic";
@@ -82,7 +82,7 @@ export default async function InboxPage({
             <Flex direction="column" gap="2">
               {threads.map((t) => {
                 const processed = Boolean(t.summary.raw?.length);
-                const replyRequired = isReplyRequired(t.summary.replyRequired);
+                const actionRequired = t.actionRequired === true || t.summary.actionRequired === true;
                 const isSelected = selectedId === t.id;
                 return (
                   <Link
@@ -102,7 +102,7 @@ export default async function InboxPage({
                           paddingTop: "0.625rem",
                           paddingLeft: "0.75rem",
                           paddingRight: "0.75rem",
-                          paddingBottom: replyRequired ? "2rem" : "0.625rem",
+                          paddingBottom: actionRequired ? "2rem" : "0.625rem",
                           background: !processed ? "var(--gray-3)" : undefined,
                         } as CSSProperties
                       }
@@ -164,7 +164,7 @@ export default async function InboxPage({
                           {t.summary.intent || "no-intent"}
                         </Badge>
                       </Flex>
-                      {replyRequired ? (
+                      {actionRequired ? (
                         <Box
                           style={{
                             position: "absolute",
