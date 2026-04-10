@@ -1,15 +1,57 @@
 import { prisma } from "@gmail-agent/db";
 import { authOptions } from "@/lib/auth";
+import { fetchGmailSendAsEmails } from "@/lib/gmail-send-as";
 import { getServerSession } from "next-auth";
 import { NextResponse } from "next/server";
 
 type GoogleTokenResponse = {
   access_token: string;
-  expires_in: number;
+  /** Lifetime in seconds (RFC 6749). May be a string in edge cases. */
+  expires_in?: number | string;
+  /** Seconds until refresh token expires (Google includes when applicable). Prefer for “re-auth by” UI. */
+  refresh_token_expires_in?: number | string;
+  /** Absolute expiry if the provider sends it (unix seconds or ms, or ISO string). */
+  expires_at?: number | string;
+  expiresAt?: number | string;
   refresh_token?: string;
   token_type?: string;
   scope?: string;
 };
+
+function parsePositiveSeconds(value: number | string | undefined | null): number | null {
+  if (value === undefined || value === null || value === "") return null;
+  const secs = typeof value === "string" ? Number.parseInt(value, 10) : Number(value);
+  return Number.isFinite(secs) && secs > 0 ? secs : null;
+}
+
+function resolveTokenExpiresAt(tokens: GoogleTokenResponse): Date {
+  const refreshSecs = parsePositiveSeconds(tokens.refresh_token_expires_in);
+  if (refreshSecs !== null) {
+    return new Date(Date.now() + refreshSecs * 1000);
+  }
+
+  const absolute = tokens.expiresAt ?? tokens.expires_at;
+  if (absolute !== undefined && absolute !== null && absolute !== "") {
+    if (typeof absolute === "string") {
+      const trimmed = absolute.trim();
+      if (/^\d+$/.test(trimmed)) {
+        const n = Number(trimmed);
+        if (Number.isFinite(n)) {
+          return new Date(n < 1e12 ? n * 1000 : n);
+        }
+      }
+      const parsed = Date.parse(trimmed);
+      if (!Number.isNaN(parsed)) return new Date(parsed);
+    }
+    if (typeof absolute === "number" && Number.isFinite(absolute)) {
+      return new Date(absolute < 1e12 ? absolute * 1000 : absolute);
+    }
+  }
+
+  const accessSecs = parsePositiveSeconds(tokens.expires_in);
+  const delta = accessSecs ?? 3600;
+  return new Date(Date.now() + delta * 1000);
+}
 
 type GoogleUserInfo = {
   sub: string;
@@ -68,7 +110,26 @@ export async function GET(request: Request) {
   }
 
   const me = (await meRes.json()) as GoogleUserInfo;
-  const tokenExpiresAt = new Date(Date.now() + (tokens.expires_in || 3600) * 1000);
+  const tokenExpiresAt = resolveTokenExpiresAt(tokens);
+
+  const raw = tokens as Record<string, unknown>;
+  console.log("[gmail/callback] OAuth token response (secrets omitted):", {
+    keys: Object.keys(raw),
+    expires_in: raw.expires_in,
+    refresh_token_expires_in: raw.refresh_token_expires_in,
+    expires_at: raw.expires_at,
+    expiresAt: raw.expiresAt,
+    token_type: raw.token_type,
+    scope: raw.scope,
+    resolvedTokenExpiresAtISO: tokenExpiresAt.toISOString(),
+  });
+
+  let sendAsEmails: string[] = [];
+  try {
+    sendAsEmails = await fetchGmailSendAsEmails(tokens.access_token);
+  } catch (e) {
+    console.warn("[gmail/callback] sendAs fetch failed (reconnect with updated scopes if needed):", e);
+  }
 
   const existing = await prisma.gmailMailbox.findFirst({
     where: { userId: session.user.id, email: me.email },
@@ -86,6 +147,7 @@ export async function GET(request: Request) {
         accessToken: tokens.access_token,
         refreshToken: tokens.refresh_token ?? existing.refreshToken ?? null,
         tokenExpiresAt,
+        sendAsEmails,
       },
     });
   } else {
@@ -99,6 +161,7 @@ export async function GET(request: Request) {
         accessToken: tokens.access_token,
         refreshToken: tokens.refresh_token ?? null,
         tokenExpiresAt,
+        sendAsEmails,
       },
     });
   }

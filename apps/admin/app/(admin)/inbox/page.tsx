@@ -1,8 +1,10 @@
 import Link from "next/link";
+import type { CSSProperties } from "react";
 import { Badge, Box, Card, Flex, Heading, Text } from "@radix-ui/themes";
 import { requireAdmin } from "../(protected)/require-admin";
 import { getThreadDetail, getThreadsList } from "../threads-data";
 import { ThreadDetailCard } from "../thread-detail-card";
+import { formatThreadLastActivity, isReplyRequired } from "../thread-inbox-utils";
 import { InboxSearchForm } from "./inbox-search-form";
 
 export const dynamic = "force-dynamic";
@@ -11,38 +13,6 @@ type SearchParams = Record<string, string | string[] | undefined>;
 
 function pick(v: string | string[] | undefined) {
   return Array.isArray(v) ? v[0] : v;
-}
-
-function formatThreadLastActivity(value: Date | null | undefined): string {
-  if (!value) return "-";
-  const d = new Date(value);
-  const diffMs = Date.now() - d.getTime();
-  if (diffMs < 0) {
-    return new Intl.DateTimeFormat("en-GB", {
-      day: "numeric",
-      month: "short",
-      year: "numeric",
-    }).format(d);
-  }
-  const diffMin = Math.floor(diffMs / 60_000);
-  if (diffMin < 1) return "just now";
-  if (diffMin < 60) return `${diffMin} min ago`;
-  const diffHr = Math.floor(diffMin / 60);
-  if (diffHr < 24) return diffHr === 1 ? "1 hour ago" : `${diffHr} hours ago`;
-  return new Intl.DateTimeFormat("en-GB", {
-    day: "numeric",
-    month: "short",
-    year: "numeric",
-  }).format(d);
-}
-
-function isReplyRequired(replyNeeded: string | undefined): boolean {
-  if (!replyNeeded?.trim()) return false;
-  const v = replyNeeded.trim().toLowerCase();
-  if (["no", "n", "false", "0", "none", "not needed", "not_needed", "not-needed"].includes(v)) {
-    return false;
-  }
-  return ["yes", "y", "true", "1", "required", "needed", "reply_needed", "reply needed"].includes(v);
 }
 
 export default async function InboxPage({
@@ -122,23 +92,20 @@ export default async function InboxPage({
                   >
                     <Card
                       size="2"
-                      style={{
-                        position: "relative",
-                        ...(isSelected
-                          ? {
-                              border: "1px solid var(--gray-6)",
-                              borderRadius: "var(--radius-3)",
-                              background: "var(--gray-3)",
-                              paddingTop: "0.625rem",
-                              paddingLeft: "0.75rem",
-                              paddingRight: "0.75rem",
-                              paddingBottom: replyRequired ? "2rem" : "0.625rem",
-                            }
-                          : {
-                              ...(!processed ? { background: "var(--gray-3)" } : undefined),
-                              ...(replyRequired ? { paddingBottom: "2rem" } : undefined),
-                            }),
-                      }}
+                      style={
+                        {
+                          position: "relative",
+                          borderRadius: "var(--radius-3)",
+                          border: `2px solid var(${isSelected ? "--gray-9" : "--gray-6"})`,
+                          // Surface Card also draws a 1px edge via ::after box-shadow; without this it stacks with `border`.
+                          "--base-card-surface-box-shadow": "none",
+                          paddingTop: "0.625rem",
+                          paddingLeft: "0.75rem",
+                          paddingRight: "0.75rem",
+                          paddingBottom: replyRequired ? "2rem" : "0.625rem",
+                          background: !processed ? "var(--gray-3)" : undefined,
+                        } as CSSProperties
+                      }
                     >
                       <Flex justify="between" align="start" gap="2" style={{ marginBottom: 6 }}>
                         <Flex align="center" gap="2" style={{ flex: 1, minWidth: 0 }}>
@@ -197,20 +164,6 @@ export default async function InboxPage({
                           {t.summary.intent || "no-intent"}
                         </Badge>
                       </Flex>
-                      <Text
-                        size="1"
-                        color="gray"
-                        style={{
-                          display: "-webkit-box",
-                          marginTop: 6,
-                          WebkitLineClamp: 4,
-                          WebkitBoxOrient: "vertical",
-                          overflow: "hidden",
-                          lineHeight: 1.45,
-                        }}
-                      >
-                        Short summary: {t.snippet?.trim() || "—"}
-                      </Text>
                       {replyRequired ? (
                         <Box
                           style={{

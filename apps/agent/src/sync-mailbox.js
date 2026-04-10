@@ -2,6 +2,7 @@ const { google } = require("googleapis");
 const { headerMap, extractEmail, extractEmails, extractBodies } = require("./parsers");
 const { GMAIL_EXCLUDE_QUERY, SKIP_SENDERS } = require("./env");
 const { prisma, upsertPeopleFromEmails } = require("./persistence");
+const { listSendAsEmailsFromGmail, isOutboundFrom } = require("./gmail-send-as");
 
 const MAX_MESSAGES_PER_RUN = 10;
 
@@ -44,7 +45,7 @@ async function listChangedMessageIds(gmail, startHistoryId) {
   return [...ids];
 }
 
-async function processMessage({ gmail, mailbox, messageId, profileEmail }) {
+async function processMessage({ gmail, mailbox, messageId, profileEmail, sendAsEmails }) {
   const msgRes = await gmail.users.messages.get({ userId: "me", id: messageId, format: "full" });
   const msg = msgRes.data;
   if (!msg.id || !msg.threadId) return { skipped: true, created: 0, updated: 0 };
@@ -69,7 +70,7 @@ async function processMessage({ gmail, mailbox, messageId, profileEmail }) {
   const allEmails = [...(fromEmail ? [fromEmail] : []), ...toEmails, ...ccEmails, ...bccEmails];
   const personIds = await upsertPeopleFromEmails(allEmails);
   const fromPersonId = fromEmail ? personIds.get(fromEmail) || null : null;
-  const direction = fromEmail === profileEmail ? "OUTBOUND" : "INBOUND";
+  const direction = isOutboundFrom(fromEmail, profileEmail, sendAsEmails) ? "OUTBOUND" : "INBOUND";
   const internalMs = msg.internalDate ? Number(msg.internalDate) : null;
   const gmailInternalDate = internalMs && Number.isFinite(internalMs) ? new Date(internalMs) : null;
 
@@ -180,11 +181,11 @@ async function syncMailbox(mailbox) {
 
   let latestAccessToken = mailbox.accessToken;
   let latestRefreshToken = mailbox.refreshToken;
-  let latestExpiry = mailbox.tokenExpiresAt ? mailbox.tokenExpiresAt.getTime() : null;
   oauth2.on("tokens", (tokens) => {
     if (tokens.access_token) latestAccessToken = tokens.access_token;
     if (tokens.refresh_token) latestRefreshToken = tokens.refresh_token;
-    if (tokens.expiry_date) latestExpiry = tokens.expiry_date;
+    // Do not persist tokens.expiry_date — that is access-token TTL (~1h).
+    // tokenExpiresAt is refresh / re-auth deadline, set from OAuth callback (refresh_token_expires_in).
   });
 
   const gmail = google.gmail({ version: "v1", auth: oauth2 });
@@ -197,6 +198,20 @@ async function syncMailbox(mailbox) {
     const profileRes = await gmail.users.getProfile({ userId: "me" });
     const profileEmail = (profileRes.data.emailAddress || mailbox.email).toLowerCase();
     const currentHistoryId = profileRes.data.historyId || null;
+
+    let sendAsEmails = Array.isArray(mailbox.sendAsEmails) ? [...mailbox.sendAsEmails] : [];
+    try {
+      sendAsEmails = await listSendAsEmailsFromGmail(gmail);
+      await prisma.gmailMailbox.update({
+        where: { id: mailbox.id },
+        data: { sendAsEmails },
+      });
+    } catch (e) {
+      console.warn(
+        `[sync-mailbox] sendAs list skipped for mailbox ${mailbox.id}:`,
+        e instanceof Error ? e.message : String(e),
+      );
+    }
 
     let mode = "full";
     let messageIds = [];
@@ -224,7 +239,7 @@ async function syncMailbox(mailbox) {
     let updated = 0;
     const touchedThreadIds = new Set();
     for (const messageId of messageIds) {
-      const result = await processMessage({ gmail, mailbox, messageId, profileEmail });
+      const result = await processMessage({ gmail, mailbox, messageId, profileEmail, sendAsEmails });
       if (result.skipped) continue;
       fetched += 1;
       created += result.created;
@@ -239,7 +254,7 @@ async function syncMailbox(mailbox) {
       lastHistoryId: currentHistoryId || mailbox.lastHistoryId || null,
       accessToken: latestAccessToken || mailbox.accessToken || null,
       refreshToken: latestRefreshToken || mailbox.refreshToken || null,
-      tokenExpiresAt: latestExpiry && Number.isFinite(latestExpiry) ? new Date(latestExpiry) : mailbox.tokenExpiresAt,
+      tokenExpiresAt: mailbox.tokenExpiresAt,
     };
 
     await prisma.gmailMailbox.update({ where: { id: mailbox.id }, data: mailboxUpdate });

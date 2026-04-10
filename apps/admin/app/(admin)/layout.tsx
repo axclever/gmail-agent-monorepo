@@ -5,6 +5,26 @@ import { authOptions } from "@/lib/auth";
 import { SidebarNav } from "./sidebar-nav";
 import { UserMenu } from "./user-menu";
 
+function formatRefreshTokenTimeLeft(expiresAt: Date | null | undefined): {
+  label: string;
+  color: "red" | "gray";
+} {
+  if (!expiresAt) return { label: "—", color: "gray" };
+  const ms = expiresAt.getTime() - Date.now();
+  if (ms <= 0) return { label: "Expired", color: "red" };
+  const dayMs = 24 * 60 * 60 * 1000;
+  const days = Math.floor(ms / dayMs);
+  const hours = Math.floor(ms / (60 * 60 * 1000));
+  if (days >= 1) {
+    return { label: `${days} day${days === 1 ? "" : "s"} left`, color: "gray" };
+  }
+  if (hours >= 1) {
+    return { label: `${hours} hour${hours === 1 ? "" : "s"} left`, color: "gray" };
+  }
+  const mins = Math.max(1, Math.floor(ms / (60 * 1000)));
+  return { label: `${mins} min${mins === 1 ? "" : "s"} left`, color: "gray" };
+}
+
 export default async function AdminLayout({
   children,
 }: Readonly<{
@@ -16,8 +36,12 @@ export default async function AdminLayout({
     ? await prisma.gmailMailbox.findFirst({
         where: { userId: user.id, provider: "GMAIL" },
         orderBy: { updatedAt: "desc" },
-        select: { email: true, status: true },
+        select: { email: true, status: true, tokenExpiresAt: true },
       })
+    : null;
+
+  const mailboxTimeLeft = connectedMailbox
+    ? formatRefreshTokenTimeLeft(connectedMailbox.tokenExpiresAt)
     : null;
 
   const fullName = user?.name?.trim() ?? "";
@@ -83,9 +107,24 @@ export default async function AdminLayout({
             >
               {connectedMailbox.email}
             </Text>
-            <Button asChild size="1" variant="soft" color="gray" style={{ marginTop: 8 }}>
-              <a href="/api/gmail/connect">Refresh</a>
-            </Button>
+            <Flex
+              justify="between"
+              align="center"
+              gap="2"
+              style={{ marginTop: 8, minWidth: 0 }}
+            >
+              <Text
+                size="1"
+                weight="medium"
+                color={mailboxTimeLeft!.color}
+                style={{ lineHeight: 1.35, minWidth: 0, flex: 1 }}
+              >
+                {mailboxTimeLeft!.label}
+              </Text>
+              <Button asChild size="1" variant="soft" color="gray" style={{ flexShrink: 0 }}>
+                <a href="/api/gmail/connect">Refresh</a>
+              </Button>
+            </Flex>
           </Box>
         ) : (
           <Button

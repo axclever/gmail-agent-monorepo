@@ -5,6 +5,7 @@ type ClassificationSummary = {
   intent?: string;
   priority?: string;
   replyNeeded?: string;
+  messageType?: string;
   shortSummary?: string;
   raw?: unknown[];
 };
@@ -83,6 +84,7 @@ export async function getThreadsList(params: { mailboxId?: string; q?: string })
     if (c.kind === "INTENT" && !current.intent) current.intent = c.value;
     if (c.kind === "PRIORITY" && !current.priority) current.priority = c.value;
     if (c.kind === "REPLY_NEEDED" && !current.replyNeeded) current.replyNeeded = c.value;
+    if (c.kind === "MESSAGE_TYPE" && !current.messageType) current.messageType = c.value;
     if (!current.raw) current.raw = [];
     current.raw.push({ id: c.id, kind: c.kind, value: c.value, rawJson: c.rawJson });
     summaryByThread.set(threadId, current);
@@ -90,6 +92,7 @@ export async function getThreadsList(params: { mailboxId?: string; q?: string })
 
   return threads.map((t) => ({
     ...t,
+    threadSummary: t.summary,
     summary: summaryByThread.get(t.id) || {},
   }));
 }
@@ -100,11 +103,11 @@ export async function getThreadDetail(threadId: string) {
     include: {
       mailbox: { select: { id: true, email: true, status: true } },
       messages: {
-        orderBy: { gmailInternalDate: "asc" },
+        orderBy: [{ gmailInternalDate: "asc" }, { createdAt: "asc" }],
         include: {
-          fromPerson: { select: { email: true, name: true } },
+          fromPerson: { select: { id: true, email: true, name: true } },
           recipients: {
-            include: { person: { select: { email: true, name: true } } },
+            include: { person: { select: { id: true, email: true, name: true } } },
           },
           classifications: {
             orderBy: { createdAt: "desc" },
@@ -125,6 +128,7 @@ export async function getThreadDetail(threadId: string) {
       if (c.kind === "INTENT" && !summary.intent) summary.intent = c.value;
       if (c.kind === "PRIORITY" && !summary.priority) summary.priority = c.value;
       if (c.kind === "REPLY_NEEDED" && !summary.replyNeeded) summary.replyNeeded = c.value;
+      if (c.kind === "MESSAGE_TYPE" && !summary.messageType) summary.messageType = c.value;
       raw.push({ messageId: msg.id, kind: c.kind, value: c.value, rawJson: c.rawJson });
     }
   }

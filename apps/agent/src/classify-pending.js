@@ -1,5 +1,5 @@
 const { classifyWithOpenAI } = require("./classifier");
-const { prisma, saveMessageClassifications, refreshThreadDerivedFields } = require("./persistence");
+const { prisma, saveMessageClassifications } = require("./persistence");
 
 function splitRecipients(recipients) {
   const toEmails = [];
@@ -63,9 +63,6 @@ async function classifyPendingMessagesForMailbox(mailboxId, limit = 500) {
       failed += 1;
     }
   }
-
-  const threadIds = [...touchedThreadIds];
-  await refreshThreadDerivedFields(threadIds);
 
   return {
     mailboxId,

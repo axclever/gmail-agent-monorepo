@@ -121,6 +121,8 @@ model GmailMailbox {
 
   /// Email address of the connected Gmail inbox
   email                 String
+  /// Lowercased send-as / alias addresses from Gmail (users.settings.sendAs); refreshed on connect and each sync.
+  sendAsEmails          String[]         @default([])
   googleAccountId       String?
 
   /// Tokens for mailbox access, separate from app auth if needed
@@ -154,6 +156,8 @@ model GmailThread {
   subject          String?
   snippet          String?
   summary          String?
+  /// When derived thread summary (and related fields) were last refreshed in the agent.
+  lastSummarizedAt DateTime?
   lastIntent       String?
   priority         String?
   replyNeeded      Boolean?

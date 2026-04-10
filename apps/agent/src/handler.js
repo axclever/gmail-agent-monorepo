@@ -1,5 +1,5 @@
 const { ensureLocalEnvLoaded } = require("./env");
-const { prisma } = require("./persistence");
+const { prisma, refreshThreadDerivedFields } = require("./persistence");
 const { syncMailbox } = require("./sync-mailbox");
 const { classifyPendingMessagesForMailbox } = require("./classify-pending");
 const { evaluateRulesForMailboxThreads } = require("./decision-engine");
@@ -21,9 +21,11 @@ async function handler() {
       orderBy: { updatedAt: "desc" },
     });
 
+    const ingestByMailboxId = new Map();
     for (const mailbox of mailboxes) {
       try {
         const ingest = await syncMailbox(mailbox);
+        ingestByMailboxId.set(mailbox.id, ingest);
         summary.mailboxes.push(ingest);
       } catch (error) {
         summary.errors.push({
@@ -36,17 +38,22 @@ async function handler() {
 
     for (const mailbox of mailboxes) {
       try {
+        const ingest = ingestByMailboxId.get(mailbox.id);
         const cls = await classifyPendingMessagesForMailbox(mailbox.id);
         summary.classification.push({
           mailboxId: mailbox.id,
           ...cls,
         });
 
-        const decision = await evaluateRulesForMailboxThreads(mailbox.id, cls.touchedThreadIds);
+        const syncTouched = ingest?.touchedThreadIds || [];
+        const threadIdsToRefresh = [...new Set([...syncTouched, ...cls.touchedThreadIds])];
+        await refreshThreadDerivedFields(threadIdsToRefresh);
+
+        const decision = await evaluateRulesForMailboxThreads(mailbox.id, threadIdsToRefresh);
         summary.decisions.push({
           mailboxId: mailbox.id,
           ...decision,
-          affectedThreads: cls.touchedThreadIds.length,
+          affectedThreads: threadIdsToRefresh.length,
         });
       } catch (error) {
         summary.errors.push({

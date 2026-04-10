@@ -108,6 +108,7 @@ async function refreshThreadDerivedFields(threadIds) {
       where: { id: thread.id },
       data: {
         summary,
+        lastSummarizedAt: new Date(),
         lastIntent,
         priority,
         replyNeeded,

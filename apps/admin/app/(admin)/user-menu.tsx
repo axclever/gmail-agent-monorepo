@@ -1,10 +1,13 @@
 "use client";
 
 import { MoreHorizontal } from "lucide-react";
+import { useRouter } from "next/navigation";
 import { signOut } from "next-auth/react";
-import { DropdownMenu, Flex, IconButton } from "@radix-ui/themes";
+import { DropdownMenu, IconButton } from "@radix-ui/themes";
 
 export function UserMenu() {
+  const router = useRouter();
+
   return (
     <DropdownMenu.Root>
       <DropdownMenu.Trigger>
@@ -13,6 +16,7 @@ export function UserMenu() {
         </IconButton>
       </DropdownMenu.Trigger>
       <DropdownMenu.Content align="end">
+        <DropdownMenu.Item onSelect={() => router.push("/mailbox")}>Mailbox</DropdownMenu.Item>
         <DropdownMenu.Item>Settings</DropdownMenu.Item>
         <DropdownMenu.Separator />
         <DropdownMenu.Item color="red" onSelect={() => signOut({ callbackUrl: "/" })}>
