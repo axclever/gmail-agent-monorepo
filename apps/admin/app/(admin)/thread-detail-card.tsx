@@ -218,12 +218,12 @@ export function ThreadDetailCard({
           <Text size="2">Intent: {summary.intent || "-"}</Text>
           <Text size="2">Priority: {summary.priority || "-"}</Text>
           <Text size="2">
-            Reply needed:{" "}
-            {thread.replyNeeded === true
+            Reply required:{" "}
+            {thread.replyRequired === true
               ? "true"
-              : thread.replyNeeded === false
+              : thread.replyRequired === false
                 ? "false"
-                : summary.replyNeeded || "-"}
+                : summary.replyRequired || "-"}
           </Text>
           <Text size="2">
             Action required:{" "}

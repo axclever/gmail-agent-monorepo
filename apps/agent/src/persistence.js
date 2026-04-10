@@ -49,7 +49,6 @@ async function saveMessageClassifications(messageId, cls) {
     data: {
       classificationStatus: "DONE",
       classifiedAt: new Date(),
-      replyNeeded: cls.replyNeeded === true,
       templateKey: cls.templateKey?.trim() ? cls.templateKey.trim().slice(0, 120) : null,
     },
   });
@@ -92,21 +91,9 @@ async function refreshThreadDerivedFields(threadIds) {
     const category = byKind.get("CATEGORY")?.value || null;
     const messageType = byKind.get("MESSAGE_TYPE")?.value || null;
 
-    const replyRow = byKind.get("REPLY_NEEDED")?.value;
-    let replyNeeded = null;
-    if (lastMessage && lastMessage.replyNeeded !== null && lastMessage.replyNeeded !== undefined) {
-      replyNeeded = lastMessage.replyNeeded;
-    } else if (replyRow != null && replyRow !== "") {
-      const v = String(replyRow).toLowerCase();
-      replyNeeded = v === "true" || v === "yes" ? true : v === "false" || v === "no" ? false : null;
-    }
-
     const hasUnrepliedInbound =
       !!lastInboundAt && (!lastOutboundAt || new Date(lastInboundAt).getTime() > new Date(lastOutboundAt).getTime());
-    const needsReply = hasUnrepliedInbound && replyNeeded === true;
-    const noActionCategories = new Set(["spam", "newsletter"]);
-    const actionRequired =
-      !!hasUnrepliedInbound && replyNeeded === true && !noActionCategories.has(category);
+    const needsReply = hasUnrepliedInbound;
     const waitingOnOtherParty = lastMessageDirection === "OUTBOUND" && !hasUnrepliedInbound;
     const status = needsReply
       ? "NEEDS_REPLY"
@@ -117,7 +104,6 @@ async function refreshThreadDerivedFields(threadIds) {
     if (category) summaryParts.push(`category: ${category}`);
     if (lastIntent) summaryParts.push(`intent: ${lastIntent}`);
     if (priority) summaryParts.push(`priority: ${priority}`);
-    if (replyNeeded !== null) summaryParts.push(`reply_needed: ${replyNeeded}`);
     if (messageType) summaryParts.push(`type: ${messageType}`);
     const summary = summaryParts.length ? summaryParts.join(" | ") : thread.snippet || null;
 
@@ -128,9 +114,9 @@ async function refreshThreadDerivedFields(threadIds) {
         lastSummarizedAt: new Date(),
         lastIntent,
         priority,
-        replyNeeded,
-        actionRequired,
-        needsReply,
+        replyRequired: null,
+        actionRequired: null,
+        needsEvaluation: false,
         waitingOnOtherParty,
         status,
         lastMessageDirection,
@@ -141,12 +127,10 @@ async function refreshThreadDerivedFields(threadIds) {
       },
     });
 
-    const replyNeededThreadStr = replyNeeded === null ? null : replyNeeded ? "true" : "false";
     const nextThreadByKind = {
       CATEGORY: category,
       INTENT: lastIntent,
       PRIORITY: priority,
-      REPLY_NEEDED: replyNeededThreadStr,
       MESSAGE_TYPE: messageType,
     };
     const latestThreadCls = await prisma.gmailThreadClassification.findMany({
@@ -174,10 +158,95 @@ async function refreshThreadDerivedFields(threadIds) {
   }
 }
 
+function toBoolOrNull(value) {
+  if (value === true) return true;
+  if (value === false) return false;
+  if (typeof value === "string") {
+    const v = value.trim().toLowerCase();
+    if (["true", "yes", "1"].includes(v)) return true;
+    if (["false", "no", "0"].includes(v)) return false;
+  }
+  return null;
+}
+
+async function computeThreadProcessingState(threadIds) {
+  if (threadIds.length === 0) return { processed: 0, needsEvaluation: 0 };
+
+  const activeActionStatuses = ["PENDING", "RUNNING", "RETRYING"];
+  const terminalStatuses = new Set(["CLOSED", "ARCHIVED", "DONE", "RESOLVED"]);
+  let processed = 0;
+  let needsEvaluationCount = 0;
+
+  for (const threadId of threadIds) {
+    const thread = await prisma.gmailThread.findUnique({
+      where: { id: threadId },
+      select: {
+        id: true,
+        status: true,
+        lastIntent: true,
+        priority: true,
+        lastMessageDirection: true,
+        hasUnrepliedInbound: true,
+        lastInboundAt: true,
+        threadAnalysisJson: true,
+      },
+    });
+    if (!thread) continue;
+
+    const analysisNeedsReply = toBoolOrNull(thread.threadAnalysisJson?.needsReply);
+    const statusNormalized = String(thread.status || "").toUpperCase();
+    const isTerminal = terminalStatuses.has(statusNormalized);
+    const replyRequired =
+      thread.lastMessageDirection === "INBOUND" &&
+      thread.hasUnrepliedInbound === true &&
+      analysisNeedsReply === true &&
+      !isTerminal;
+
+    // MVP rule: actionRequired follows replyRequired.
+    const actionRequired = replyRequired;
+
+    const latestDecision = await prisma.gmailDecision.findFirst({
+      where: { threadId: thread.id },
+      orderBy: { createdAt: "desc" },
+      select: { createdAt: true },
+    });
+    const lastDecisionAt = latestDecision?.createdAt || null;
+
+    const activeAction = await prisma.gmailAction.findFirst({
+      where: {
+        status: { in: activeActionStatuses },
+        decision: { threadId: thread.id },
+      },
+      select: { id: true },
+    });
+    const hasActiveAction = !!activeAction;
+
+    const decisionIsStale =
+      !!thread.lastInboundAt && (!lastDecisionAt || new Date(lastDecisionAt).getTime() < new Date(thread.lastInboundAt).getTime());
+    const needsEvaluation = actionRequired === true && decisionIsStale && !hasActiveAction;
+
+    await prisma.gmailThread.update({
+      where: { id: thread.id },
+      data: {
+        replyRequired,
+        actionRequired,
+        needsEvaluation,
+        lastEvaluatedAt: new Date(),
+        lastDecisionAt,
+      },
+    });
+    processed += 1;
+    if (needsEvaluation) needsEvaluationCount += 1;
+  }
+
+  return { processed, needsEvaluation: needsEvaluationCount };
+}
+
 module.exports = {
   prisma,
   upsertPeopleFromEmails,
   saveMessageClassifications,
   refreshThreadDerivedFields,
+  computeThreadProcessingState,
 };
 

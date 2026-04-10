@@ -1,5 +1,5 @@
 const { ensureLocalEnvLoaded } = require("./env");
-const { prisma, refreshThreadDerivedFields } = require("./persistence");
+const { prisma, refreshThreadDerivedFields, computeThreadProcessingState } = require("./persistence");
 const { syncMailbox } = require("./sync-mailbox");
 const { classifyPendingMessagesForMailbox } = require("./classify-pending");
 const { evaluateRulesForMailboxThreads } = require("./decision-engine");
@@ -11,6 +11,7 @@ async function handler() {
     message: "Gmail sync completed",
     mailboxes: [],
     classification: [],
+    processingState: [],
     decisions: [],
     errors: [],
   };
@@ -48,6 +49,11 @@ async function handler() {
         const syncTouched = ingest?.touchedThreadIds || [];
         const threadIdsToRefresh = [...new Set([...syncTouched, ...cls.touchedThreadIds])];
         await refreshThreadDerivedFields(threadIdsToRefresh);
+        const processingState = await computeThreadProcessingState(threadIdsToRefresh);
+        summary.processingState.push({
+          mailboxId: mailbox.id,
+          ...processingState,
+        });
 
         const decision = await evaluateRulesForMailboxThreads(mailbox.id, threadIdsToRefresh);
         summary.decisions.push({

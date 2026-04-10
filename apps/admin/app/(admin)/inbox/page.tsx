@@ -82,7 +82,7 @@ export default async function InboxPage({
             <Flex direction="column" gap="2">
               {threads.map((t) => {
                 const processed = Boolean(t.summary.raw?.length);
-                const replyRequired = isReplyRequired(t.summary.replyNeeded);
+                const replyRequired = isReplyRequired(t.summary.replyRequired);
                 const isSelected = selectedId === t.id;
                 return (
                   <Link

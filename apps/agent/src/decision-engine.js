@@ -79,13 +79,14 @@ async function evaluateRulesForThreads({ mailboxId, threadIds, latestMessageIdBy
       },
     });
     if (!thread) continue;
+    if (thread.needsEvaluation !== true) continue;
 
     const clsByKind = new Map();
     for (const row of thread.classifications) {
       if (!clsByKind.has(row.kind)) clsByKind.set(row.kind, row.value);
     }
 
-    let replyNeededBool = thread.replyNeeded;
+    let replyNeededBool = thread.replyRequired;
     if (replyNeededBool === null || replyNeededBool === undefined) {
       replyNeededBool = replyNeededToBool(clsByKind.get("REPLY_NEEDED"));
     }
@@ -98,8 +99,9 @@ async function evaluateRulesForThreads({ mailboxId, threadIds, latestMessageIdBy
       messageType: clsByKind.get("MESSAGE_TYPE") || null,
       lastMessageDirection: thread.lastMessageDirection || null,
       hasUnrepliedInbound: !!thread.hasUnrepliedInbound,
-      needsReply: !!thread.needsReply,
+      replyRequired: !!thread.replyRequired,
       actionRequired: !!thread.actionRequired,
+      needsEvaluation: !!thread.needsEvaluation,
       waitingOnOtherParty: !!thread.waitingOnOtherParty,
       status: thread.status || null,
     };

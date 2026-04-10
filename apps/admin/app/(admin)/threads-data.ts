@@ -4,7 +4,7 @@ type ClassificationSummary = {
   category?: string;
   intent?: string;
   priority?: string;
-  replyNeeded?: string;
+  replyRequired?: string;
   messageType?: string;
   actionRequired?: boolean;
   templateKey?: string | null;
@@ -86,7 +86,7 @@ export async function getThreadsList(params: { mailboxId?: string; q?: string })
     if (c.kind === "CATEGORY" && !current.category) current.category = c.value;
     if (c.kind === "INTENT" && !current.intent) current.intent = c.value;
     if (c.kind === "PRIORITY" && !current.priority) current.priority = c.value;
-    if (c.kind === "REPLY_NEEDED" && !current.replyNeeded) current.replyNeeded = c.value;
+    if (c.kind === "REPLY_NEEDED" && !current.replyRequired) current.replyRequired = c.value;
     if (c.kind === "MESSAGE_TYPE" && !current.messageType) current.messageType = c.value;
     if (!current.raw) current.raw = [];
     current.raw.push({ id: c.id, kind: c.kind, value: c.value, rawJson: c.rawJson });
@@ -96,8 +96,8 @@ export async function getThreadsList(params: { mailboxId?: string; q?: string })
   return threads.map((t) => {
     const fromCls = summaryByThread.get(t.id) || {};
     const summary: ClassificationSummary = { ...fromCls };
-    if (t.replyNeeded !== null && t.replyNeeded !== undefined) {
-      summary.replyNeeded = t.replyNeeded ? "true" : "false";
+    if (t.replyRequired !== null && t.replyRequired !== undefined) {
+      summary.replyRequired = t.replyRequired ? "true" : "false";
     }
     if (t.actionRequired !== null && t.actionRequired !== undefined) {
       summary.actionRequired = t.actionRequired;
@@ -144,13 +144,13 @@ export async function getThreadDetail(threadId: string) {
       if (c.kind === "CATEGORY" && !summary.category) summary.category = c.value;
       if (c.kind === "INTENT" && !summary.intent) summary.intent = c.value;
       if (c.kind === "PRIORITY" && !summary.priority) summary.priority = c.value;
-      if (c.kind === "REPLY_NEEDED" && !summary.replyNeeded) summary.replyNeeded = c.value;
+      if (c.kind === "REPLY_NEEDED" && !summary.replyRequired) summary.replyRequired = c.value;
       if (c.kind === "MESSAGE_TYPE" && !summary.messageType) summary.messageType = c.value;
       raw.push({ messageId: msg.id, kind: c.kind, value: c.value, rawJson: c.rawJson });
     }
   }
-  if (thread.replyNeeded !== null && thread.replyNeeded !== undefined) {
-    summary.replyNeeded = thread.replyNeeded ? "true" : "false";
+  if (thread.replyRequired !== null && thread.replyRequired !== undefined) {
+    summary.replyRequired = thread.replyRequired ? "true" : "false";
   }
   if (thread.actionRequired !== null && thread.actionRequired !== undefined) {
     summary.actionRequired = thread.actionRequired;

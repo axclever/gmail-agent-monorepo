@@ -53,15 +53,15 @@ export function formatRulesSummaryLine(s: {
   category?: string;
   intent?: string;
   priority?: string;
-  replyNeeded?: string | boolean;
+  replyRequired?: string | boolean;
   messageType?: string;
 }): string {
   const parts: string[] = [];
   if (s.category) parts.push(`category: ${s.category}`);
   if (s.intent) parts.push(`intent: ${s.intent}`);
   if (s.priority) parts.push(`priority: ${s.priority}`);
-  if (s.replyNeeded !== undefined && s.replyNeeded !== null && s.replyNeeded !== "") {
-    parts.push(`reply_needed: ${typeof s.replyNeeded === "boolean" ? String(s.replyNeeded) : s.replyNeeded}`);
+  if (s.replyRequired !== undefined && s.replyRequired !== null && s.replyRequired !== "") {
+    parts.push(`reply_required: ${typeof s.replyRequired === "boolean" ? String(s.replyRequired) : s.replyRequired}`);
   }
   if (s.messageType) parts.push(`type: ${s.messageType}`);
   return parts.length ? parts.join(" | ") : "";
@@ -73,11 +73,11 @@ export function isRulesStyleThreadSummary(s: string | null | undefined): boolean
   return !!t && t.includes("category:");
 }
 
-export function isReplyRequired(replyNeeded: string | boolean | undefined | null): boolean {
-  if (replyNeeded === true) return true;
-  if (replyNeeded === false) return false;
-  if (replyNeeded == null) return false;
-  const s = String(replyNeeded).trim();
+export function isReplyRequired(replyRequired: string | boolean | undefined | null): boolean {
+  if (replyRequired === true) return true;
+  if (replyRequired === false) return false;
+  if (replyRequired == null) return false;
+  const s = String(replyRequired).trim();
   if (!s) return false;
   const v = s.toLowerCase();
   if (["no", "n", "false", "0", "none", "not needed", "not_needed", "not-needed"].includes(v)) {
