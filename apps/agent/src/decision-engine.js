@@ -1,6 +1,41 @@
 const { prisma } = require("./persistence");
 
+function replyNeededToBool(v) {
+  if (v === true) return true;
+  if (v === false) return false;
+  if (typeof v === "string") {
+    const s = v.toLowerCase();
+    if (["true", "yes", "1"].includes(s)) return true;
+    if (["false", "no", "0"].includes(s)) return false;
+  }
+  return null;
+}
+
 function matchesCondition(threadState, key, expected) {
+  if (key === "replyNeeded") {
+    const actual = replyNeededToBool(threadState[key]);
+    if (Array.isArray(expected)) {
+      return expected.some((e) => replyNeededToBool(e) === actual);
+    }
+    if (typeof expected === "object" && expected !== null) {
+      if (Object.prototype.hasOwnProperty.call(expected, "eq")) {
+        return actual === replyNeededToBool(expected.eq);
+      }
+      if (Object.prototype.hasOwnProperty.call(expected, "neq")) {
+        return actual !== replyNeededToBool(expected.neq);
+      }
+      if (Object.prototype.hasOwnProperty.call(expected, "in") && Array.isArray(expected.in)) {
+        return expected.in.some((e) => replyNeededToBool(e) === actual);
+      }
+      if (Object.prototype.hasOwnProperty.call(expected, "notIn") && Array.isArray(expected.notIn)) {
+        return !expected.notIn.some((e) => replyNeededToBool(e) === actual);
+      }
+    }
+    const exp = replyNeededToBool(expected);
+    if (exp === null) return actual === null;
+    return actual === exp;
+  }
+
   const actual = threadState[key];
   if (Array.isArray(expected)) return expected.includes(actual);
   if (typeof expected === "object" && expected !== null) {
@@ -50,15 +85,21 @@ async function evaluateRulesForThreads({ mailboxId, threadIds, latestMessageIdBy
       if (!clsByKind.has(row.kind)) clsByKind.set(row.kind, row.value);
     }
 
+    let replyNeededBool = thread.replyNeeded;
+    if (replyNeededBool === null || replyNeededBool === undefined) {
+      replyNeededBool = replyNeededToBool(clsByKind.get("REPLY_NEEDED"));
+    }
+
     const threadState = {
       category: clsByKind.get("CATEGORY") || null,
       intent: clsByKind.get("INTENT") || thread.lastIntent || null,
       priority: clsByKind.get("PRIORITY") || thread.priority || null,
-      replyNeeded: clsByKind.get("REPLY_NEEDED") || (thread.replyNeeded === true ? "yes" : thread.replyNeeded === false ? "no" : null),
+      replyNeeded: replyNeededBool,
       messageType: clsByKind.get("MESSAGE_TYPE") || null,
       lastMessageDirection: thread.lastMessageDirection || null,
       hasUnrepliedInbound: !!thread.hasUnrepliedInbound,
       needsReply: !!thread.needsReply,
+      actionRequired: !!thread.actionRequired,
       waitingOnOtherParty: !!thread.waitingOnOtherParty,
       status: thread.status || null,
     };

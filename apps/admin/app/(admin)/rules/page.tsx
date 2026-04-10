@@ -117,8 +117,8 @@ export default async function RulesPage() {
               name="conditionsJson"
               rows={6}
               defaultValue={`{
-  "intent": "pricing",
-  "replyNeeded": "yes",
+  "intent": "pricing_request",
+  "replyNeeded": true,
   "hasUnrepliedInbound": true
 }`}
             />

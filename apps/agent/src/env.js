@@ -3,8 +3,8 @@ const path = require("path");
 
 const SKIP_SENDERS = new Set(["no-reply@partnerpage.io"]);
 const GMAIL_EXCLUDE_QUERY = "-from:no-reply@partnerpage.io";
-const OPENAI_MINI_MODEL = process.env.OPENAI_MINI_MODEL || "gpt-5-mini";
-const OPENAI_STRONG_MODEL = process.env.OPENAI_STRONG_MODEL || "gpt-5";
+const OPENAI_MINI_MODEL = process.env.OPENAI_MINI_MODEL || "gpt-4o-mini";
+const OPENAI_STRONG_MODEL = process.env.OPENAI_STRONG_MODEL || "gpt-4o";
 const CLASSIFIER_CONFIDENCE_THRESHOLD = 0.72;
 
 function ensureLocalEnvLoaded() {

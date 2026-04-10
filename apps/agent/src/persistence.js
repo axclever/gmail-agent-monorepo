@@ -15,11 +15,12 @@ async function upsertPeopleFromEmails(emails) {
 }
 
 async function saveMessageClassifications(messageId, cls) {
+  const replyNeededStr = cls.replyNeeded === true ? "true" : "false";
   const nextByKind = {
     CATEGORY: cls.category,
     INTENT: cls.intent,
     PRIORITY: cls.priority,
-    REPLY_NEEDED: cls.replyNeeded,
+    REPLY_NEEDED: replyNeededStr,
     MESSAGE_TYPE: cls.messageType,
   };
   const latestRows = await prisma.gmailMessageClassification.findMany({
@@ -45,7 +46,12 @@ async function saveMessageClassifications(messageId, cls) {
   }
   await prisma.gmailMessage.update({
     where: { id: messageId },
-    data: { classificationStatus: "DONE", classifiedAt: new Date() },
+    data: {
+      classificationStatus: "DONE",
+      classifiedAt: new Date(),
+      replyNeeded: cls.replyNeeded === true,
+      templateKey: cls.templateKey?.trim() ? cls.templateKey.trim().slice(0, 120) : null,
+    },
   });
 }
 
@@ -83,13 +89,24 @@ async function refreshThreadDerivedFields(threadIds) {
 
     const lastIntent = byKind.get("INTENT")?.value || null;
     const priority = byKind.get("PRIORITY")?.value || null;
-    const replyNeededRaw = byKind.get("REPLY_NEEDED")?.value || null;
-    const replyNeeded = replyNeededRaw === "yes" ? true : replyNeededRaw === "no" ? false : null;
     const category = byKind.get("CATEGORY")?.value || null;
     const messageType = byKind.get("MESSAGE_TYPE")?.value || null;
+
+    const replyRow = byKind.get("REPLY_NEEDED")?.value;
+    let replyNeeded = null;
+    if (lastMessage && lastMessage.replyNeeded !== null && lastMessage.replyNeeded !== undefined) {
+      replyNeeded = lastMessage.replyNeeded;
+    } else if (replyRow != null && replyRow !== "") {
+      const v = String(replyRow).toLowerCase();
+      replyNeeded = v === "true" || v === "yes" ? true : v === "false" || v === "no" ? false : null;
+    }
+
     const hasUnrepliedInbound =
       !!lastInboundAt && (!lastOutboundAt || new Date(lastInboundAt).getTime() > new Date(lastOutboundAt).getTime());
     const needsReply = hasUnrepliedInbound && replyNeeded === true;
+    const noActionCategories = new Set(["spam", "newsletter"]);
+    const actionRequired =
+      !!hasUnrepliedInbound && replyNeeded === true && !noActionCategories.has(category);
     const waitingOnOtherParty = lastMessageDirection === "OUTBOUND" && !hasUnrepliedInbound;
     const status = needsReply
       ? "NEEDS_REPLY"
@@ -100,7 +117,7 @@ async function refreshThreadDerivedFields(threadIds) {
     if (category) summaryParts.push(`category: ${category}`);
     if (lastIntent) summaryParts.push(`intent: ${lastIntent}`);
     if (priority) summaryParts.push(`priority: ${priority}`);
-    if (replyNeededRaw) summaryParts.push(`reply_needed: ${replyNeededRaw}`);
+    if (replyNeeded !== null) summaryParts.push(`reply_needed: ${replyNeeded}`);
     if (messageType) summaryParts.push(`type: ${messageType}`);
     const summary = summaryParts.length ? summaryParts.join(" | ") : thread.snippet || null;
 
@@ -112,6 +129,7 @@ async function refreshThreadDerivedFields(threadIds) {
         lastIntent,
         priority,
         replyNeeded,
+        actionRequired,
         needsReply,
         waitingOnOtherParty,
         status,
@@ -123,11 +141,12 @@ async function refreshThreadDerivedFields(threadIds) {
       },
     });
 
+    const replyNeededThreadStr = replyNeeded === null ? null : replyNeeded ? "true" : "false";
     const nextThreadByKind = {
       CATEGORY: category,
       INTENT: lastIntent,
       PRIORITY: priority,
-      REPLY_NEEDED: replyNeededRaw,
+      REPLY_NEEDED: replyNeededThreadStr,
       MESSAGE_TYPE: messageType,
     };
     const latestThreadCls = await prisma.gmailThreadClassification.findMany({
@@ -138,7 +157,7 @@ async function refreshThreadDerivedFields(threadIds) {
     for (const row of latestThreadCls) if (!latestThreadByKind.has(row.kind)) latestThreadByKind.set(row.kind, row);
 
     for (const [kind, value] of Object.entries(nextThreadByKind)) {
-      if (!value) continue;
+      if (value === null || value === undefined || value === "") continue;
       const latest = latestThreadByKind.get(kind);
       if (latest && latest.value === value) continue;
       await prisma.gmailThreadClassification.create({

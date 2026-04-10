@@ -5,6 +5,7 @@ import {
   formatRecipientEmailList,
   formatRulesSummaryLine,
   formatThreadLastActivity,
+  getThreadAnalysisProseSummary,
   isRulesStyleThreadSummary,
   sortMessagesNewestFirst,
 } from "./thread-inbox-utils";
@@ -68,9 +69,13 @@ export function ThreadDetailCard({
       (isRulesStyleThreadSummary(thread.summary) ? thread.summary!.trim() : null) ||
       "—";
 
+    const proseSummary = getThreadAnalysisProseSummary(thread.threadAnalysisJson);
     const rawThreadSummary = thread.summary?.trim();
     const threadSummaryText =
-      rawThreadSummary && !isRulesStyleThreadSummary(rawThreadSummary) ? rawThreadSummary : "—";
+      proseSummary ||
+      (rawThreadSummary && !isRulesStyleThreadSummary(rawThreadSummary) ? rawThreadSummary : "") ||
+      thread.snippet?.trim() ||
+      "—";
 
     return (
       <Flex direction="column" gap="3" style={{ height: "100%", minHeight: 0 }}>
@@ -212,14 +217,36 @@ export function ThreadDetailCard({
           <Text size="2">Category: {summary.category || "-"}</Text>
           <Text size="2">Intent: {summary.intent || "-"}</Text>
           <Text size="2">Priority: {summary.priority || "-"}</Text>
-          <Text size="2">Reply needed: {summary.replyNeeded || "-"}</Text>
+          <Text size="2">
+            Reply needed:{" "}
+            {thread.replyNeeded === true
+              ? "true"
+              : thread.replyNeeded === false
+                ? "false"
+                : summary.replyNeeded || "-"}
+          </Text>
+          <Text size="2">
+            Action required:{" "}
+            {thread.actionRequired === true
+              ? "true"
+              : thread.actionRequired === false
+                ? "false"
+                : "-"}
+          </Text>
+          <Text size="2">Template key: {summary.templateKey?.trim() ? summary.templateKey : "-"}</Text>
           <Text
             as="div"
             size="2"
             color="gray"
             style={{ whiteSpace: "pre-wrap", wordBreak: "break-word", overflow: "visible" }}
           >
-            Summary: {thread.summary?.trim() || thread.snippet?.trim() || "—"}
+            Summary:{" "}
+            {getThreadAnalysisProseSummary(thread.threadAnalysisJson) ||
+              (thread.summary?.trim() && !isRulesStyleThreadSummary(thread.summary)
+                ? thread.summary!.trim()
+                : "") ||
+              thread.snippet?.trim() ||
+              "—"}
           </Text>
         </Flex>
       </Card>

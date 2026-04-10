@@ -42,6 +42,11 @@ enum ClassificationKind {
   MESSAGE_TYPE
 }
 
+enum IntegrationType {
+  HTTP
+  SMTP
+}
+
 model User {
   id            String    @id @default(cuid())
   name          String?
@@ -54,9 +59,29 @@ model User {
   sessions      Session[]
 
   gmailMailboxes GmailMailbox[]
+  integrations   Integration[]
 
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
+}
+
+model Integration {
+  id                   String            @id @default(cuid())
+  userId               String
+  user                 User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type                 IntegrationType
+  name                 String
+  isActive             Boolean           @default(true)
+  /// Non-secret settings only (URLs, ports, default chat id, etc.).
+  configJson           Json?
+  /// Application-layer encrypted payload (tokens, passwords, API keys).
+  encryptedSecretJson  Json?
+  createdAt            DateTime          @default(now())
+  updatedAt            DateTime          @updatedAt
+
+  gmailActions         GmailAction[]
+
+  @@index([userId])
 }
 
 model Account {
@@ -170,6 +195,11 @@ model GmailThread {
   lastInboundAt    DateTime?
   lastOutboundAt   DateTime?
   hasUnrepliedInbound Boolean?    @default(false)
+  /// Derived: hasUnrepliedInbound && replyNeeded && category not spam/newsletter
+  actionRequired   Boolean?
+  /// LLM thread-level analysis (summary, currentIntent, stage, needsReply, waitingOn); refreshed on new inbound.
+  threadAnalysisJson Json?
+  threadAnalysisAt   DateTime?
   createdAt        DateTime       @default(now())
   updatedAt        DateTime       @updatedAt
 
@@ -215,6 +245,8 @@ model GmailMessage {
   rawPayloadJson    Json?
   classificationStatus String?
   classifiedAt      DateTime?
+  replyNeeded       Boolean?
+  templateKey       String?
 
   createdAt         DateTime               @default(now())
   updatedAt         DateTime               @updatedAt
@@ -350,19 +382,22 @@ model GmailDecision {
 }
 
 model GmailAction {
-  id          String       @id @default(cuid())
-  decisionId  String
-  type        String
-  status      String
-  payloadJson Json?
-  resultJson  Json?
-  errorText   String?
-  executedAt  DateTime?
-  createdAt   DateTime     @default(now())
+  id             String         @id @default(cuid())
+  decisionId     String
+  integrationId  String?
+  type           String
+  status         String
+  payloadJson    Json?
+  resultJson     Json?
+  errorText      String?
+  executedAt     DateTime?
+  createdAt      DateTime       @default(now())
 
-  decision    GmailDecision @relation(fields: [decisionId], references: [id], onDelete: Cascade)
+  decision       GmailDecision  @relation(fields: [decisionId], references: [id], onDelete: Cascade)
+  integration    Integration?   @relation(fields: [integrationId], references: [id], onDelete: SetNull)
 
   @@index([decisionId])
+  @@index([integrationId])
   @@index([status])
   @@index([type])
 }

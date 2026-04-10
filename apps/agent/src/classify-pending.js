@@ -1,5 +1,6 @@
 const { classifyWithOpenAI } = require("./classifier");
 const { prisma, saveMessageClassifications } = require("./persistence");
+const { analyzeThreadById, shouldSkipThreadAnalysisForMessageClassification } = require("./thread-analyzer");
 
 function splitRecipients(recipients) {
   const toEmails = [];
@@ -28,6 +29,7 @@ async function classifyPendingMessagesForMailbox(mailboxId, limit = 500) {
   });
 
   const touchedThreadIds = new Set();
+  const threadIdsForThreadAnalysis = new Set();
   let classified = 0;
   let failed = 0;
 
@@ -51,6 +53,12 @@ async function classifyPendingMessagesForMailbox(mailboxId, limit = 500) {
 
       await saveMessageClassifications(message.id, cls);
       touchedThreadIds.add(message.threadId);
+      if (
+        message.direction === "INBOUND" &&
+        !shouldSkipThreadAnalysisForMessageClassification(cls)
+      ) {
+        threadIdsForThreadAnalysis.add(message.threadId);
+      }
       classified += 1;
     } catch (error) {
       await prisma.gmailMessage.update({
@@ -64,12 +72,27 @@ async function classifyPendingMessagesForMailbox(mailboxId, limit = 500) {
     }
   }
 
+  let threadAnalysisOk = 0;
+  let threadAnalysisSkipped = 0;
+  for (const threadId of threadIdsForThreadAnalysis) {
+    try {
+      const r = await analyzeThreadById(threadId);
+      if (r.ok) threadAnalysisOk += 1;
+      else threadAnalysisSkipped += 1;
+    } catch {
+      threadAnalysisSkipped += 1;
+    }
+  }
+
   return {
     mailboxId,
     pendingCandidates: messages.length,
     classified,
     failed,
-    touchedThreadIds: threadIds,
+    touchedThreadIds: [...touchedThreadIds],
+    threadAnalysisCandidates: threadIdsForThreadAnalysis.size,
+    threadAnalysisOk,
+    threadAnalysisSkipped,
   };
 }
 

@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Inbox, ListChecks, SlidersHorizontal, Users } from "lucide-react";
+import { Inbox, ListChecks, Plug, SlidersHorizontal, Users } from "lucide-react";
 import { Box, Button, Flex } from "@radix-ui/themes";
 
 const NAV_ITEMS = [
@@ -10,6 +10,7 @@ const NAV_ITEMS = [
   { href: "/people", label: "People", Icon: Users },
   { href: "/rules", label: "Rules", Icon: SlidersHorizontal },
   { href: "/actions", label: "Actions", Icon: ListChecks },
+  { href: "/integrations", label: "Integrations", Icon: Plug },
 ];
 
 export function SidebarNav() {

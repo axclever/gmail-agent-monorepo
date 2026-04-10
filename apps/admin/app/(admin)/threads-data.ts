@@ -6,6 +6,8 @@ type ClassificationSummary = {
   priority?: string;
   replyNeeded?: string;
   messageType?: string;
+  actionRequired?: boolean;
+  templateKey?: string | null;
   shortSummary?: string;
   raw?: unknown[];
 };
@@ -61,6 +63,7 @@ export async function getThreadsList(params: { mailboxId?: string; q?: string })
           id: true,
           direction: true,
           gmailInternalDate: true,
+          templateKey: true,
           fromPerson: { select: { email: true, name: true } },
         },
       },
@@ -90,11 +93,25 @@ export async function getThreadsList(params: { mailboxId?: string; q?: string })
     summaryByThread.set(threadId, current);
   }
 
-  return threads.map((t) => ({
-    ...t,
-    threadSummary: t.summary,
-    summary: summaryByThread.get(t.id) || {},
-  }));
+  return threads.map((t) => {
+    const fromCls = summaryByThread.get(t.id) || {};
+    const summary: ClassificationSummary = { ...fromCls };
+    if (t.replyNeeded !== null && t.replyNeeded !== undefined) {
+      summary.replyNeeded = t.replyNeeded ? "true" : "false";
+    }
+    if (t.actionRequired !== null && t.actionRequired !== undefined) {
+      summary.actionRequired = t.actionRequired;
+    }
+    const latestTemplateKey = t.messages[0]?.templateKey;
+    if (latestTemplateKey != null && latestTemplateKey !== "") {
+      summary.templateKey = latestTemplateKey;
+    }
+    return {
+      ...t,
+      threadSummary: t.summary,
+      summary,
+    };
+  });
 }
 
 export async function getThreadDetail(threadId: string) {
@@ -130,6 +147,19 @@ export async function getThreadDetail(threadId: string) {
       if (c.kind === "REPLY_NEEDED" && !summary.replyNeeded) summary.replyNeeded = c.value;
       if (c.kind === "MESSAGE_TYPE" && !summary.messageType) summary.messageType = c.value;
       raw.push({ messageId: msg.id, kind: c.kind, value: c.value, rawJson: c.rawJson });
+    }
+  }
+  if (thread.replyNeeded !== null && thread.replyNeeded !== undefined) {
+    summary.replyNeeded = thread.replyNeeded ? "true" : "false";
+  }
+  if (thread.actionRequired !== null && thread.actionRequired !== undefined) {
+    summary.actionRequired = thread.actionRequired;
+  }
+  for (let i = thread.messages.length - 1; i >= 0; i--) {
+    const tk = thread.messages[i]?.templateKey;
+    if (tk != null && tk !== "") {
+      summary.templateKey = tk;
+      break;
     }
   }
   summary.raw = raw;
