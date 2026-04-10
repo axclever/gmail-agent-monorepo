@@ -28,10 +28,20 @@ export default async function AdminLayout({
       : (fullName.slice(0, 2) || user?.email?.slice(0, 2) || "U").toUpperCase();
 
   return (
-    <Flex style={{ minHeight: "100vh" }}>
+    <Flex
+      style={{
+        height: "100dvh",
+        minHeight: "100dvh",
+        alignItems: "stretch",
+        overflow: "hidden",
+      }}
+    >
       <Box
         style={{
           width: 264,
+          flexShrink: 0,
+          minHeight: 0,
+          overflowY: "auto",
           borderRight: "1px solid var(--gray-6)",
           padding: "1.25rem 1rem",
           display: "flex",
@@ -159,7 +169,19 @@ export default async function AdminLayout({
         </Box>
       </Box>
 
-      <Box style={{ flex: 1, padding: "1.5rem" }}>{children}</Box>
+      <Box
+        style={{
+          flex: 1,
+          minWidth: 0,
+          minHeight: 0,
+          overflowY: "auto",
+          padding: "1.5rem",
+          display: "flex",
+          flexDirection: "column",
+        }}
+      >
+        {children}
+      </Box>
     </Flex>
   );
 }

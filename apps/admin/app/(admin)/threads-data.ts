@@ -17,22 +17,33 @@ export async function getMailboxesForFilter(userId: string) {
   });
 }
 
-export async function getThreadsList(params: {
-  mailboxId?: string;
-  q?: string;
-  priority?: string;
-  replyNeeded?: string;
-}) {
-  const { mailboxId, q, priority, replyNeeded } = params;
+export async function getThreadsList(params: { mailboxId?: string; q?: string }) {
+  const { mailboxId, q } = params;
+  const qTrim = q?.trim();
 
   const threads = await prisma.gmailThread.findMany({
     where: {
       ...(mailboxId ? { mailboxId } : {}),
-      ...(q
+      ...(qTrim
         ? {
             OR: [
-              { subject: { contains: q, mode: "insensitive" } },
-              { snippet: { contains: q, mode: "insensitive" } },
+              { subject: { contains: qTrim, mode: "insensitive" } },
+              {
+                messages: {
+                  some: {
+                    OR: [
+                      { fromPerson: { email: { contains: qTrim, mode: "insensitive" } } },
+                      {
+                        recipients: {
+                          some: {
+                            person: { email: { contains: qTrim, mode: "insensitive" } },
+                          },
+                        },
+                      },
+                    ],
+                  },
+                },
+              },
             ],
           }
         : {}),
@@ -77,14 +88,7 @@ export async function getThreadsList(params: {
     summaryByThread.set(threadId, current);
   }
 
-  const filtered = threads.filter((t) => {
-    const s = summaryByThread.get(t.id);
-    if (priority && (s?.priority || "").toLowerCase() !== priority.toLowerCase()) return false;
-    if (replyNeeded && (s?.replyNeeded || "").toLowerCase() !== replyNeeded.toLowerCase()) return false;
-    return true;
-  });
-
-  return filtered.map((t) => ({
+  return threads.map((t) => ({
     ...t,
     summary: summaryByThread.get(t.id) || {},
   }));

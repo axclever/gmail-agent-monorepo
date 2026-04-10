@@ -22,10 +22,12 @@ export function ThreadDetailCard({
   detail,
   showRawDebug = true,
   timelineMaxHeight,
+  inboxLayout = false,
 }: {
   detail: Detail;
   showRawDebug?: boolean;
   timelineMaxHeight?: string | number;
+  inboxLayout?: boolean;
 }) {
   if (!detail) {
     return (
@@ -40,6 +42,82 @@ export function ThreadDetailCard({
   for (const msg of thread.messages) {
     if (msg.fromPerson?.email) participants.add(msg.fromPerson.email);
     for (const r of msg.recipients) participants.add(r.person.email);
+  }
+
+  if (inboxLayout) {
+    return (
+      <Flex direction="column" gap="3" style={{ height: "100%", minHeight: 0 }}>
+        <Card size="3">
+          <Flex direction="column" gap="2">
+            <Heading size="4">{thread.subject || "(no subject)"}</Heading>
+            <Text size="2" color="gray">
+              Participants: {[...participants].join(", ") || "-"}
+            </Text>
+            <Text size="2" color="gray">
+              Thread ID: {thread.gmailThreadId}
+            </Text>
+            <Text size="2" color="gray">
+              Last activity: {fmtDate(thread.lastMessageAt)}
+            </Text>
+            <Text size="2" color="gray">
+              Message count: {thread.messages.length}
+            </Text>
+            <Separator size="4" />
+            <Heading size="3">AI summary</Heading>
+            <Text size="2">Category: {summary.category || "-"}</Text>
+            <Text size="2">Intent: {summary.intent || "-"}</Text>
+            <Text size="2">Priority: {summary.priority || "-"}</Text>
+            <Text size="2">Reply needed: {summary.replyNeeded || "-"}</Text>
+            <Text size="2" color="gray">
+              Short summary: {thread.snippet || "-"}
+            </Text>
+          </Flex>
+        </Card>
+
+        <Flex direction="column" gap="2" style={{ flex: 1, minHeight: 0 }}>
+          <Heading size="3">Timeline</Heading>
+          <Box
+            className="smart-scroll"
+            style={{
+              flex: 1,
+              minHeight: 0,
+              overflowY: "auto",
+              paddingRight: 4,
+            }}
+          >
+            <Flex direction="column" gap="2">
+            {thread.messages.map((msg) => (
+              <Card key={msg.id} size="2">
+                <Flex align="center" gap="2" justify="between">
+                  <Flex align="center" gap="2">
+                    <Badge color={msg.direction === "INBOUND" ? "blue" : "green"}>
+                      {msg.direction.toLowerCase()}
+                    </Badge>
+                    <Text size="2" color="gray">
+                      {fmtDate(msg.gmailInternalDate)}
+                    </Text>
+                  </Flex>
+                  <Link href={`/threads/${thread.id}`}>open</Link>
+                </Flex>
+                <Text size="2" style={{ marginTop: 6 }}>
+                  From: {msg.fromPerson?.email || "-"}
+                </Text>
+                <Text size="1" color="gray">
+                  To: {listEmails(msg.recipients, "TO")}
+                </Text>
+                <Text size="1" color="gray">
+                  Cc: {listEmails(msg.recipients, "CC")}
+                </Text>
+                <Text size="2" color="gray" style={{ marginTop: 6 }}>
+                  {msg.snippet || msg.textBody || msg.htmlBody || "-"}
+                </Text>
+              </Card>
+            ))}
+            </Flex>
+          </Box>
+        </Flex>
+      </Flex>
+    );
   }
 
   return (
@@ -121,6 +199,7 @@ export function ThreadDetailCard({
           </Box>
         </Flex>
       </Card>
+
       {showRawDebug ? (
         <Card size="3">
           <details>
@@ -149,4 +228,3 @@ export function ThreadDetailCard({
     </Flex>
   );
 }
-
