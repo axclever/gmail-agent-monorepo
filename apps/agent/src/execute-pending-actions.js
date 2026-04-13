@@ -8,12 +8,13 @@
 const { prisma } = require("./persistence");
 const { createGmailForMailbox } = require("./gmail-auth");
 const { sendTemplatedEmail } = require("./send-templated-email");
+const { composeDraftReviewAction } = require("./compose-draft-review");
 
 async function executePendingActionsForMailbox(mailbox) {
   const pending = await prisma.gmailAction.findMany({
     where: {
       status: "PENDING",
-      type: "send_templated_email",
+      type: { in: ["send_templated_email", "draft_review_request"] },
       decision: { mailboxId: mailbox.id },
     },
     take: 25,
@@ -43,20 +44,33 @@ async function executePendingActionsForMailbox(mailbox) {
       });
 
       if (!action.decision?.threadId) {
-        throw new Error("send_templated_email: decision has no threadId");
+        throw new Error(`${action.type}: decision has no threadId`);
       }
 
-      const result = await sendTemplatedEmail({
-        gmail,
-        mailbox: {
-          id: mailbox.id,
-          email: mailbox.email,
-          sendAsEmails: mailbox.sendAsEmails || [],
-          defaultSendAsEmail: mailbox.defaultSendAsEmail || null,
-        },
-        params,
-        threadId: action.decision.threadId,
-      });
+      const mailboxContext = {
+        id: mailbox.id,
+        userId: mailbox.userId,
+        email: mailbox.email,
+        sendAsEmails: mailbox.sendAsEmails || [],
+        defaultSendAsEmail: mailbox.defaultSendAsEmail || null,
+      };
+      let result;
+      if (action.type === "send_templated_email") {
+        result = await sendTemplatedEmail({
+          gmail,
+          mailbox: mailboxContext,
+          params,
+          threadId: action.decision.threadId,
+        });
+      } else if (action.type === "draft_review_request") {
+        result = await composeDraftReviewAction({
+          mailbox: mailboxContext,
+          threadId: action.decision.threadId,
+          actionId: action.id,
+        });
+      } else {
+        throw new Error(`Unsupported action type: ${action.type}`);
+      }
 
       await prisma.gmailAction.update({
         where: { id: action.id },
@@ -70,6 +84,14 @@ async function executePendingActionsForMailbox(mailbox) {
       succeeded += 1;
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
+      console.error("[agent] action execution failed", {
+        mailboxId: mailbox.id,
+        actionId: action.id,
+        actionType: action.type,
+        decisionId: action.decision?.id || null,
+        threadId: action.decision?.threadId || null,
+        error: msg,
+      });
       await prisma.gmailAction.update({
         where: { id: action.id },
         data: {

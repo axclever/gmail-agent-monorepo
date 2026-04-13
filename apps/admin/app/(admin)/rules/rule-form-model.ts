@@ -9,11 +9,9 @@ export type ConditionRowState = {
 
 export type ActionRowState = {
   id: string;
-  type: "send_templated_email" | "run_integration" | "create_draft" | "notify" | "";
+  type: "send_templated_email" | "run_integration" | "draft_review_request" | "create_draft" | "notify" | "";
   /** GmailEmailTemplate.templateKey */
   emailTemplateKey: string;
-  /** For send_templated_email: when true, create Gmail draft instead of immediate send. */
-  createDraft: boolean;
   /** For send_templated_email: explicit sender alias (Gmail Send-as). */
   fromAliasEmail: string;
   /** Integration.id for run_integration */
@@ -111,7 +109,6 @@ export function emptyActionRow(): ActionRowState {
     id: newRowId(),
     type: "",
     emailTemplateKey: "",
-    createDraft: true,
     fromAliasEmail: "",
     integrationId: "",
     templateId: "lead_followup_v1",
@@ -198,7 +195,7 @@ export function conditionsFromJson(json: unknown): ConditionRowState[] {
 }
 
 type PersistedActionRow = ActionRowState & {
-  type: "create_draft" | "notify" | "send_templated_email" | "run_integration";
+  type: "create_draft" | "notify" | "send_templated_email" | "run_integration" | "draft_review_request";
 };
 
 export function actionsToJson(rows: ActionRowState[]): unknown[] {
@@ -208,7 +205,8 @@ export function actionsToJson(rows: ActionRowState[]): unknown[] {
         r.type === "create_draft" ||
         r.type === "notify" ||
         r.type === "send_templated_email" ||
-        r.type === "run_integration",
+        r.type === "run_integration" ||
+        r.type === "draft_review_request",
     )
     .map((r) => {
       switch (r.type) {
@@ -232,13 +230,17 @@ export function actionsToJson(rows: ActionRowState[]): unknown[] {
             params: {
               templateKey: key,
               variables: {},
-              createDraft: r.createDraft !== false,
               ...(r.fromAliasEmail.trim()
                 ? { fromAliasEmail: r.fromAliasEmail.trim().toLowerCase() }
                 : {}),
             },
           };
         }
+        case "draft_review_request":
+          return {
+            type: "draft_review_request",
+            params: {},
+          };
         case "run_integration": {
           const id = r.integrationId.trim();
           if (!id) {
@@ -269,7 +271,6 @@ export function actionsFromJson(json: unknown): ActionRowState[] {
         id: newRowId(),
         type: "create_draft",
         emailTemplateKey: "",
-        createDraft: true,
         fromAliasEmail: "",
         integrationId: "",
         templateId: String(p.templateId ?? "lead_followup_v1"),
@@ -280,7 +281,6 @@ export function actionsFromJson(json: unknown): ActionRowState[] {
         id: newRowId(),
         type: "notify",
         emailTemplateKey: "",
-        createDraft: true,
         fromAliasEmail: "",
         integrationId: "",
         templateId: "lead_followup_v1",
@@ -291,7 +291,6 @@ export function actionsFromJson(json: unknown): ActionRowState[] {
         id: newRowId(),
         type: "send_templated_email",
         emailTemplateKey: String(p.templateKey ?? ""),
-        createDraft: p.createDraft === false ? false : true,
         fromAliasEmail: String(p.fromAliasEmail ?? ""),
         integrationId: "",
         templateId: "lead_followup_v1",
@@ -302,9 +301,18 @@ export function actionsFromJson(json: unknown): ActionRowState[] {
         id: newRowId(),
         type: "run_integration",
         emailTemplateKey: "",
-        createDraft: true,
         fromAliasEmail: "",
         integrationId: String(p.integrationId ?? ""),
+        templateId: "lead_followup_v1",
+        channel: "telegram",
+      });
+    } else if (t === "draft_review_request") {
+      out.push({
+        id: newRowId(),
+        type: "draft_review_request",
+        emailTemplateKey: "",
+        fromAliasEmail: "",
+        integrationId: "",
         templateId: "lead_followup_v1",
         channel: "telegram",
       });

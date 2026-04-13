@@ -2,17 +2,7 @@
 
 import React, { type Dispatch, type SetStateAction } from "react";
 import { useEffect, useMemo } from "react";
-import {
-  Box,
-  Button,
-  Checkbox,
-  Flex,
-  IconButton,
-  Select,
-  Separator,
-  Text,
-  TextField,
-} from "@radix-ui/themes";
+import { Box, Button, Checkbox, Flex, IconButton, Select, Separator, Text, TextField } from "@radix-ui/themes";
 import { X } from "lucide-react";
 import { ConditionMatchesPreview } from "./condition-matches-preview";
 import {
@@ -113,26 +103,6 @@ function SendEmailActionFields({
         </Box>
       </Flex>
 
-      <Text
-        as="label"
-        size="2"
-        style={{
-          display: "inline-flex",
-          alignItems: "center",
-          gap: 8,
-          cursor: disabled ? "default" : "pointer",
-          userSelect: "none",
-          width: "fit-content",
-        }}
-      >
-        <Checkbox
-          checked={row.createDraft}
-          onCheckedChange={(v) => updateAction(row.id, { createDraft: v === true })}
-          disabled={disabled}
-        />
-        Create draft
-      </Text>
-
       {emailTemplates.length === 0 ? (
         <Text size="2" color="gray">
           Add templates under Email templates in the sidebar. The message is sent to the last inbound sender on the
@@ -184,6 +154,15 @@ function SendEmailActionFields({
         </Text>
       ) : null}
     </Flex>
+  );
+}
+
+function ComposeDraftActionFields() {
+  return (
+    <Text size="2" color="gray" style={{ flex: "1 1 320px", minWidth: 220 }}>
+      Creates a draft review request from thread context (summary + latest inbound message), generates a reply with
+      LLM, stores it in draft reviews, and sends it to the Telegram endpoint for approve/reject/edit flow.
+    </Text>
   );
 }
 
@@ -606,6 +585,7 @@ export function RuleFormFields({
               align={
                 row.type === "send_templated_email" ||
                 row.type === "run_integration" ||
+                row.type === "draft_review_request" ||
                 row.type === "create_draft" ||
                 row.type === "notify"
                   ? "start"
@@ -621,7 +601,6 @@ export function RuleFormFields({
                     const patch: Partial<ActionRowState> = { type };
                     if (type === "send_templated_email" && !row.emailTemplateKey.trim() && emailTemplates[0]) {
                       patch.emailTemplateKey = emailTemplates[0].templateKey;
-                      patch.createDraft = true;
                       if (!row.fromAliasEmail.trim() && defaultFromAlias) {
                         patch.fromAliasEmail = defaultFromAlias;
                       }
@@ -637,6 +616,7 @@ export function RuleFormFields({
                   <Select.Content position="popper">
                     <Select.Item value={EMPTY_VALUE}>Type…</Select.Item>
                     <Select.Item value="send_templated_email">Send email</Select.Item>
+                    <Select.Item value="draft_review_request">Compose draft</Select.Item>
                     <Select.Item value="run_integration">Run integration</Select.Item>
                     {row.type === "create_draft" ? (
                       <Select.Item value="create_draft">Legacy: create_draft</Select.Item>
@@ -650,8 +630,8 @@ export function RuleFormFields({
 
               {row.type === "create_draft" || row.type === "notify" ? (
                 <Text size="2" color="gray" style={{ flex: "1 1 240px", minWidth: 0 }}>
-                  This action type is no longer supported in the UI. Choose &quot;Send email&quot; or &quot;Run
-                  integration&quot; and save, or leave as-is to keep the stored JSON unchanged.
+                  This action type is no longer supported in the UI. Choose &quot;Send email&quot;, &quot;Compose
+                  draft&quot; or &quot;Run integration&quot; and save, or leave as-is to keep the stored JSON unchanged.
                 </Text>
               ) : null}
 
@@ -674,6 +654,8 @@ export function RuleFormFields({
                   updateAction={updateAction}
                 />
               ) : null}
+
+              {row.type === "draft_review_request" ? <ComposeDraftActionFields /> : null}
 
               <IconButton
                 type="button"

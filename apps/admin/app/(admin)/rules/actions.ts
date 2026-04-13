@@ -19,6 +19,8 @@ export type RuleConditionMatchPreviewRow = {
   lastEmailFrom: string;
   lastDirection: string | null;
   threadIntent: string | null;
+  actionRequired: boolean | null;
+  needsEvaluation: boolean;
   snippet: string | null;
 };
 
@@ -85,6 +87,8 @@ export async function previewRuleConditionMatches(conditions: unknown[]) {
       lastMessageAt: true,
       lastMessageDirection: true,
       lastIntent: true,
+      actionRequired: true,
+      needsEvaluation: true,
       replyRequired: true,
       hasUnrepliedInbound: true,
       status: true,
@@ -132,6 +136,8 @@ export async function previewRuleConditionMatches(conditions: unknown[]) {
         lastEmailFrom: fromEmail,
         lastDirection: t.lastMessageDirection,
         threadIntent: threadObj.intent ?? null,
+        actionRequired: t.actionRequired,
+        needsEvaluation: t.needsEvaluation,
         snippet: lineSnippet,
       });
     }

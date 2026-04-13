@@ -197,6 +197,16 @@ export function ConditionMatchesPreview({
                           intent: {t.threadIntent}
                         </Badge>
                       ) : null}
+                      <Badge
+                        size="1"
+                        variant="soft"
+                        color={t.actionRequired === true ? "amber" : "gray"}
+                      >
+                        actionRequired: {t.actionRequired === null ? "-" : String(t.actionRequired)}
+                      </Badge>
+                      <Badge size="1" variant="soft" color={t.needsEvaluation ? "blue" : "gray"}>
+                        needsEvaluation: {String(t.needsEvaluation)}
+                      </Badge>
                       {t.lastMessageAtIso ? (
                         <Text size="1" color="gray" style={{ alignSelf: "center" }}>
                           {formatThreadLastActivity(new Date(t.lastMessageAtIso))}

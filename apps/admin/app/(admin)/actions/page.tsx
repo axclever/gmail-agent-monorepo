@@ -2,6 +2,7 @@ import Link from "next/link";
 import { prisma } from "@gmail-agent/db";
 import { Badge, Box, Button, Card, Flex, Heading, Select, Table, Text } from "@radix-ui/themes";
 import { requireAdmin } from "../(protected)/require-admin";
+import { DeleteActionButton } from "./delete-action-button";
 
 export const dynamic = "force-dynamic";
 
@@ -146,12 +147,13 @@ export default async function ActionsPage({
               <Table.ColumnHeaderCell>Decision</Table.ColumnHeaderCell>
               <Table.ColumnHeaderCell>Thread</Table.ColumnHeaderCell>
               <Table.ColumnHeaderCell>Error</Table.ColumnHeaderCell>
+              <Table.ColumnHeaderCell width="1%">Actions</Table.ColumnHeaderCell>
             </Table.Row>
           </Table.Header>
           <Table.Body>
             {actions.length === 0 ? (
               <Table.Row>
-                <Table.Cell colSpan={6}>
+                <Table.Cell colSpan={7}>
                   <Text color="gray">No actions found.</Text>
                 </Table.Cell>
               </Table.Row>
@@ -180,6 +182,9 @@ export default async function ActionsPage({
                     <Text size="1" color={action.errorText ? "red" : "gray"}>
                       {action.errorText || "-"}
                     </Text>
+                  </Table.Cell>
+                  <Table.Cell>
+                    <DeleteActionButton actionId={action.id} />
                   </Table.Cell>
                 </Table.Row>
               ))

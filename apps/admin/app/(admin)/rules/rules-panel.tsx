@@ -66,6 +66,7 @@ function countRuleActions(actions: unknown): number {
       t === "create_draft" ||
       t === "notify" ||
       t === "send_templated_email" ||
+      t === "draft_review_request" ||
       t === "run_integration"
     );
   }).length;

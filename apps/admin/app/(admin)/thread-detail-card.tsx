@@ -10,6 +10,7 @@ import {
   sortMessagesNewestFirst,
   summarizeMessageClassificationsForTimeline,
 } from "./thread-inbox-utils";
+import { ResetNeedsEvaluationButton } from "./inbox/reset-needs-evaluation-button";
 
 type Detail = Awaited<ReturnType<typeof import("./threads-data").getThreadDetail>>;
 
@@ -158,6 +159,12 @@ export function ThreadDetailCard({
             Action required:{" "}
             {thread.actionRequired === true ? "true" : thread.actionRequired === false ? "false" : "-"}
           </Text>
+          <Flex align="center" gap="2" style={{ marginTop: 4 }}>
+            <Text size="1" color="gray" style={{ lineHeight: 1.45 }}>
+              needsEvaluation:
+            </Text>
+            <ResetNeedsEvaluationButton threadId={thread.id} currentValue={thread.needsEvaluation} />
+          </Flex>
           <Separator size="4" style={{ marginTop: 10 }} />
           <Text
             size="3"
@@ -239,6 +246,10 @@ export function ThreadDetailCard({
                 ? "false"
                 : "-"}
           </Text>
+          <Flex align="center" gap="2">
+            <Text size="2">Needs evaluation:</Text>
+            <ResetNeedsEvaluationButton threadId={thread.id} currentValue={thread.needsEvaluation} />
+          </Flex>
           <Text size="2">Template key: {summary.templateKey?.trim() ? summary.templateKey : "-"}</Text>
           <Text
             as="div"

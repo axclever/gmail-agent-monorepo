@@ -52,7 +52,7 @@ async function resolveLastInboundPersonContext(threadId) {
  * @param {object} opts
  * @param {import("googleapis").gmail_v1.Gmail} opts.gmail
  * @param {{ id: string; email: string; sendAsEmails?: string[]; defaultSendAsEmail?: string | null }} opts.mailbox
- * @param {{ templateKey: string; to?: string; variables?: Record<string, unknown>; createDraft?: boolean; fromAliasEmail?: string }} opts.params
+ * @param {{ templateKey: string; to?: string; variables?: Record<string, unknown>; fromAliasEmail?: string }} opts.params
  * @param {string} opts.threadId - internal thread id
  */
 async function sendTemplatedEmail({ gmail, mailbox, params, threadId }) {

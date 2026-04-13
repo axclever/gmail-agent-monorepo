@@ -7,6 +7,9 @@ const GMAIL_POLL_WINDOW_MINUTES = Number(process.env.GMAIL_POLL_WINDOW_MINUTES |
 const OPENAI_MINI_MODEL = process.env.OPENAI_MINI_MODEL || "gpt-4o-mini";
 const OPENAI_STRONG_MODEL = process.env.OPENAI_STRONG_MODEL || "gpt-4o";
 const CLASSIFIER_CONFIDENCE_THRESHOLD = 0.72;
+const TELEGRAM_BOT_URL = String(process.env.TELEGRAM_BOT_URL || "").trim();
+const TELEGRAM_BOT_API_TOKEN = String(process.env.TELEGRAM_BOT_API_TOKEN || "").trim();
+const TELEGRAM_BOT_TARGET = String(process.env.TELEGRAM_BOT_TARGET || "onpro-logs-channel").trim();
 
 /** When false, the agent only creates `GmailAction` rows; it does not send mail or run side effects. */
 const EXECUTE_PENDING_ACTIONS = process.env.EXECUTE_PENDING_ACTIONS === "true";
@@ -35,6 +38,9 @@ module.exports = {
   OPENAI_MINI_MODEL,
   OPENAI_STRONG_MODEL,
   CLASSIFIER_CONFIDENCE_THRESHOLD,
+  TELEGRAM_BOT_URL,
+  TELEGRAM_BOT_API_TOKEN,
+  TELEGRAM_BOT_TARGET,
   EXECUTE_PENDING_ACTIONS,
   ensureLocalEnvLoaded,
 };
