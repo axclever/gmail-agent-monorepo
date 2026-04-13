@@ -8,6 +8,8 @@
   },
   "dependencies": {
     "@gmail-agent/db": "*",
+    "@gmail-agent/email-templates": "*",
+    "@gmail-agent/rule-conditions": "*",
     "googleapis": "^171.0.0"
   }
 }

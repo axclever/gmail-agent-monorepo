@@ -1,4 +1,5 @@
 const { prisma } = require("./persistence");
+const { buildConditionContextFromThreadRow, ruleConditionsMatch } = require("@gmail-agent/rule-conditions");
 
 function replyNeededToBool(v) {
   if (v === true) return true;
@@ -11,59 +12,22 @@ function replyNeededToBool(v) {
   return null;
 }
 
-function matchesCondition(threadState, key, expected) {
-  if (key === "replyNeeded") {
-    const actual = replyNeededToBool(threadState[key]);
-    if (Array.isArray(expected)) {
-      return expected.some((e) => replyNeededToBool(e) === actual);
-    }
-    if (typeof expected === "object" && expected !== null) {
-      if (Object.prototype.hasOwnProperty.call(expected, "eq")) {
-        return actual === replyNeededToBool(expected.eq);
-      }
-      if (Object.prototype.hasOwnProperty.call(expected, "neq")) {
-        return actual !== replyNeededToBool(expected.neq);
-      }
-      if (Object.prototype.hasOwnProperty.call(expected, "in") && Array.isArray(expected.in)) {
-        return expected.in.some((e) => replyNeededToBool(e) === actual);
-      }
-      if (Object.prototype.hasOwnProperty.call(expected, "notIn") && Array.isArray(expected.notIn)) {
-        return !expected.notIn.some((e) => replyNeededToBool(e) === actual);
-      }
-    }
-    const exp = replyNeededToBool(expected);
-    if (exp === null) return actual === null;
-    return actual === exp;
-  }
-
-  const actual = threadState[key];
-  if (Array.isArray(expected)) return expected.includes(actual);
-  if (typeof expected === "object" && expected !== null) {
-    if (Object.prototype.hasOwnProperty.call(expected, "in") && Array.isArray(expected.in)) {
-      return expected.in.includes(actual);
-    }
-    if (Object.prototype.hasOwnProperty.call(expected, "notIn") && Array.isArray(expected.notIn)) {
-      return !expected.notIn.includes(actual);
-    }
-    if (Object.prototype.hasOwnProperty.call(expected, "eq")) return actual === expected.eq;
-    if (Object.prototype.hasOwnProperty.call(expected, "neq")) return actual !== expected.neq;
-  }
-  return actual === expected;
+function parseJsonArray(value) {
+  if (Array.isArray(value)) return value;
+  if (value == null) return [];
+  return [];
 }
 
-function ruleMatchesThread(rule, threadState) {
-  const conditions = rule.conditionsJson && typeof rule.conditionsJson === "object" ? rule.conditionsJson : {};
-  for (const [key, expected] of Object.entries(conditions)) {
-    if (!matchesCondition(threadState, key, expected)) return false;
-  }
-  return true;
+function ruleMatchesThread(rule, threadState, conditionContext) {
+  const conditions = parseJsonArray(rule.conditions);
+  return ruleConditionsMatch(conditions, conditionContext);
 }
 
 async function evaluateRulesForThreads({ mailboxId, threadIds, latestMessageIdByThread }) {
   if (threadIds.length === 0) return { decisions: 0, actions: 0 };
 
   const rules = await prisma.gmailRule.findMany({
-    where: { mailboxId, isActive: true },
+    where: { mailboxId, enabled: true },
     orderBy: [{ priority: "asc" }, { createdAt: "asc" }],
   });
   if (rules.length === 0) return { decisions: 0, actions: 0 };
@@ -80,6 +44,17 @@ async function evaluateRulesForThreads({ mailboxId, threadIds, latestMessageIdBy
     });
     if (!thread) continue;
     if (thread.needsEvaluation !== true) continue;
+
+    const latestMessage = await prisma.gmailMessage.findFirst({
+      where: { threadId },
+      orderBy: [{ gmailInternalDate: "desc" }, { createdAt: "desc" }],
+      select: {
+        subject: true,
+        snippet: true,
+        textBody: true,
+        htmlBody: true,
+      },
+    });
 
     const clsByKind = new Map();
     for (const row of thread.classifications) {
@@ -106,8 +81,15 @@ async function evaluateRulesForThreads({ mailboxId, threadIds, latestMessageIdBy
       status: thread.status || null,
     };
 
+    const conditionContext = buildConditionContextFromThreadRow(thread, latestMessage);
+
     for (const rule of rules) {
-      if (!ruleMatchesThread(rule, threadState)) continue;
+      if (!ruleMatchesThread(rule, threadState, conditionContext)) continue;
+
+      const actions = parseJsonArray(rule.actions).filter((a) => a && typeof a === "object");
+      if (actions.length === 0) continue;
+
+      const primaryType = String(actions[0].type || "").trim() || "unknown";
 
       const decision = await prisma.gmailDecision.create({
         data: {
@@ -115,29 +97,36 @@ async function evaluateRulesForThreads({ mailboxId, threadIds, latestMessageIdBy
           threadId,
           messageId: latestMessageIdByThread.get(threadId) || null,
           ruleId: rule.id,
-          decisionType: rule.actionType,
+          decisionType: primaryType,
           status: "PENDING",
-          reason: `Matched rule '${rule.name}'`,
+          reason: `Matched rule '${rule.name}' (${rule.ruleKey})`,
         },
         select: { id: true },
       });
       decisionsCount += 1;
 
-      await prisma.gmailAction.create({
-        data: {
-          decisionId: decision.id,
-          type: rule.actionType,
-          status: "PENDING",
-          payloadJson: {
-            ruleId: rule.id,
-            ruleName: rule.name,
-            rulePriority: rule.priority,
-            actionConfig: rule.actionConfigJson || null,
-            matchedState: threadState,
+      for (const action of actions) {
+        const type = String(action.type || "").trim() || primaryType;
+        const params = action.params && typeof action.params === "object" && !Array.isArray(action.params) ? action.params : {};
+
+        await prisma.gmailAction.create({
+          data: {
+            decisionId: decision.id,
+            type,
+            status: "PENDING",
+            payloadJson: {
+              ruleId: rule.id,
+              ruleKey: rule.ruleKey,
+              ruleName: rule.name,
+              rulePriority: rule.priority,
+              ruleVersion: rule.version,
+              params,
+              matchedState: threadState,
+            },
           },
-        },
-      });
-      actionsCount += 1;
+        });
+        actionsCount += 1;
+      }
 
       if (rule.stopProcessing) break;
     }
@@ -170,4 +159,3 @@ module.exports = {
   evaluateRulesForThreads,
   evaluateRulesForMailboxThreads,
 };
-

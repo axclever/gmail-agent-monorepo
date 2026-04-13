@@ -3,6 +3,7 @@ const { prisma, refreshThreadDerivedFields, computeThreadProcessingState } = req
 const { syncMailbox } = require("./sync-mailbox");
 const { classifyPendingMessagesForMailbox } = require("./classify-pending");
 const { evaluateRulesForMailboxThreads } = require("./decision-engine");
+const { executePendingActionsForMailbox } = require("./execute-pending-actions");
 
 async function handler() {
   ensureLocalEnvLoaded();
@@ -13,6 +14,7 @@ async function handler() {
     classification: [],
     processingState: [],
     decisions: [],
+    actionRuns: [],
     errors: [],
   };
 
@@ -60,6 +62,12 @@ async function handler() {
           mailboxId: mailbox.id,
           ...decision,
           affectedThreads: threadIdsToRefresh.length,
+        });
+
+        const actionRun = await executePendingActionsForMailbox(mailbox);
+        summary.actionRuns.push({
+          mailboxId: mailbox.id,
+          ...actionRun,
         });
       } catch (error) {
         summary.errors.push({

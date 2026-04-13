@@ -8,6 +8,7 @@ import {
   getThreadAnalysisProseSummary,
   isRulesStyleThreadSummary,
   sortMessagesNewestFirst,
+  summarizeMessageClassificationsForTimeline,
 } from "./thread-inbox-utils";
 
 type Detail = Awaited<ReturnType<typeof import("./threads-data").getThreadDetail>>;
@@ -184,6 +185,7 @@ export function ThreadDetailCard({
               textBody: msg.textBody,
               htmlBody: msg.htmlBody,
               snippet: msg.snippet,
+              classificationLines: summarizeMessageClassificationsForTimeline(msg.classifications ?? []),
             }))}
           />
         </Flex>
@@ -269,6 +271,7 @@ export function ThreadDetailCard({
               textBody: msg.textBody,
               htmlBody: msg.htmlBody,
               snippet: msg.snippet,
+              classificationLines: summarizeMessageClassificationsForTimeline(msg.classifications ?? []),
             }))}
           />
         </Flex>

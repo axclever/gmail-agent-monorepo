@@ -4,6 +4,12 @@ import { Badge, Box, Button, Card, Flex, Separator, Text } from "@radix-ui/theme
 import { useCallback, useState } from "react";
 import { FullMessageModal, type FullMessageContent } from "@/components/full-message-modal";
 
+export type ThreadTimelineClassificationLine = {
+  label: string;
+  value: string;
+  meta?: string;
+};
+
 export type ThreadTimelineMessagePayload = {
   id: string;
   direction: "INBOUND" | "OUTBOUND";
@@ -14,6 +20,8 @@ export type ThreadTimelineMessagePayload = {
   textBody?: string | null;
   htmlBody?: string | null;
   snippet?: string | null;
+  /** Per-message AI classification (newest row per kind). */
+  classificationLines?: ThreadTimelineClassificationLine[];
 };
 
 type Props = {
@@ -67,6 +75,32 @@ export function ThreadTimelineWithOpenModal({
   const previewText = (msg: ThreadTimelineMessagePayload) =>
     msg.snippet?.trim() || msg.textBody?.trim() || msg.htmlBody?.trim() || "—";
 
+  function ClassificationBlock({ msg }: { msg: ThreadTimelineMessagePayload }) {
+    const lines = msg.classificationLines;
+    if (!lines?.length) return null;
+    return (
+      <>
+        <Separator size="4" style={{ marginTop: 10 }} />
+        <Text size="1" weight="medium" color="gray" style={{ display: "block", marginTop: 8 }}>
+          AI classification
+        </Text>
+        {lines.map((line) => (
+          <Text
+            key={`${msg.id}-${line.label}`}
+            size="1"
+            color="gray"
+            style={{ display: "block", marginTop: 4, lineHeight: 1.45, wordBreak: "break-word" }}
+          >
+            {line.label}: {line.value}
+            {line.meta ? (
+              <span style={{ opacity: 0.85 }}> ({line.meta})</span>
+            ) : null}
+          </Text>
+        ))}
+      </>
+    );
+  }
+
   const threadHref = `/threads/${threadId}`;
 
   const list =
@@ -105,6 +139,7 @@ export function ThreadTimelineWithOpenModal({
             <Text size="2" color="gray" style={{ marginTop: 8, display: "block", lineHeight: 1.45 }}>
               {previewText(msg)}
             </Text>
+            <ClassificationBlock msg={msg} />
             <Flex justify="end" style={{ marginTop: 6 }}>
               <Button type="button" variant="ghost" size="1" highContrast onClick={() => openMessage(msg)}>
                 open
@@ -142,6 +177,7 @@ export function ThreadTimelineWithOpenModal({
             <Text size="2" color="gray" style={{ marginTop: 6 }}>
               {previewText(msg)}
             </Text>
+            <ClassificationBlock msg={msg} />
             <Separator size="4" style={{ marginTop: 10 }} />
           </Box>
         ))}

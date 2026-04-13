@@ -73,6 +73,52 @@ export function isRulesStyleThreadSummary(s: string | null | undefined): boolean
   return !!t && t.includes("category:");
 }
 
+export type TimelineClassificationLine = {
+  label: string;
+  value: string;
+  meta?: string;
+};
+
+/** One row per kind; uses newest row per kind when `classifications` is ordered by `createdAt` desc. */
+export function summarizeMessageClassificationsForTimeline(
+  classifications: Array<{
+    kind: string;
+    value: string;
+    confidence?: number | null;
+    model?: string | null;
+  }>,
+): TimelineClassificationLine[] {
+  if (!classifications?.length) return [];
+  const kindLabels: Record<string, string> = {
+    CATEGORY: "Category",
+    INTENT: "Intent",
+    PRIORITY: "Priority",
+    REPLY_NEEDED: "Reply needed",
+    MESSAGE_TYPE: "Message type",
+  };
+  const order = ["CATEGORY", "INTENT", "PRIORITY", "MESSAGE_TYPE", "REPLY_NEEDED"];
+  const pick = new Map<string, (typeof classifications)[0]>();
+  for (const c of classifications) {
+    if (!pick.has(c.kind)) pick.set(c.kind, c);
+  }
+  return order
+    .filter((k) => pick.has(k))
+    .map((k) => {
+      const c = pick.get(k)!;
+      const metaParts: string[] = [];
+      if (c.confidence != null && !Number.isNaN(Number(c.confidence))) {
+        const pct = Math.round(Number(c.confidence) * 100);
+        metaParts.push(`${pct}% confidence`);
+      }
+      if (c.model?.trim()) metaParts.push(c.model.trim());
+      return {
+        label: kindLabels[k] ?? k,
+        value: c.value,
+        meta: metaParts.length ? metaParts.join(" · ") : undefined,
+      };
+    });
+}
+
 export function isReplyRequired(replyRequired: string | boolean | undefined | null): boolean {
   if (replyRequired === true) return true;
   if (replyRequired === false) return false;

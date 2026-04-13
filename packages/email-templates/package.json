@@ -1,0 +1,10 @@
+{
+  "name": "@gmail-agent/email-templates",
+  "version": "0.0.1",
+  "private": true,
+  "main": "./src/index.js",
+  "types": "./src/index.d.ts",
+  "dependencies": {
+    "mustache": "^4.2.0"
+  }
+}

@@ -166,8 +166,9 @@ model GmailMailbox {
   threads   GmailThread[]
   messages  GmailMessage[]
   syncRuns  GmailSyncRun[]
-  rules     GmailRule[]
-  decisions GmailDecision[]
+  rules           GmailRule[]
+  decisions       GmailDecision[]
+  emailTemplates  GmailEmailTemplate[]
 
   @@unique([userId, email])
   @@index([userId])
@@ -338,24 +339,49 @@ model GmailSyncRun {
   @@index([status])
 }
 
+/// Rule document shape (JSON): id → ruleKey, enabled, priority, version, stopProcessing, conditions[], actions[]
+/// Reusable outbound email: Mustache placeholders {{name}} in subject & body.
+model GmailEmailTemplate {
+  id          String   @id @default(cuid())
+  mailboxId   String
+  /// Stable key for rules / API, e.g. lead_followup (unique per mailbox).
+  templateKey String
+  /// Human-readable label in admin UI.
+  name        String
+  subject     String
+  body        String   @db.Text
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  mailbox GmailMailbox @relation(fields: [mailboxId], references: [id], onDelete: Cascade)
+
+  @@unique([mailboxId, templateKey])
+  @@index([mailboxId])
+}
+
 model GmailRule {
-  id               String   @id @default(cuid())
-  mailboxId        String
-  name             String
-  priority         Int      @default(100)
-  isActive         Boolean  @default(true)
-  conditionsJson   Json?
-  actionType       String
-  actionConfigJson Json?
-  stopProcessing   Boolean  @default(false)
-  createdAt        DateTime @default(now())
-  updatedAt        DateTime @updatedAt
+  id             String   @id @default(cuid())
+  mailboxId      String
+  /// Stable logical id per mailbox, e.g. rule_lead_reply (maps to document `id`)
+  ruleKey        String
+  name           String
+  enabled        Boolean  @default(true)
+  priority       Int      @default(100)
+  version        Int      @default(1)
+  stopProcessing Boolean  @default(false)
+  /// Array of { field, operator, value }
+  conditions     Json     @default("[]")
+  /// Array of { type, params }
+  actions        Json     @default("[]")
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
 
   mailbox   GmailMailbox    @relation(fields: [mailboxId], references: [id], onDelete: Cascade)
   decisions GmailDecision[]
 
+  @@unique([mailboxId, ruleKey])
   @@index([mailboxId])
-  @@index([isActive])
+  @@index([enabled])
   @@index([priority])
 }
 
