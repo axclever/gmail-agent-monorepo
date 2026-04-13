@@ -9,7 +9,7 @@ export default async function RulesPage() {
   const mailbox = await prisma.gmailMailbox.findFirst({
     where: { userId, provider: "GMAIL" },
     orderBy: { updatedAt: "desc" },
-    select: { id: true, email: true },
+    select: { id: true, email: true, sendAsEmails: true, defaultSendAsEmail: true },
   });
 
   const rules = mailbox
@@ -39,6 +39,20 @@ export default async function RulesPage() {
       })
     : [];
 
+  const integrations = await prisma.integration.findMany({
+    where: { userId, isActive: true },
+    select: { id: true, name: true, type: true },
+    orderBy: { name: "asc" },
+  });
+
+  const sendAsOptions = mailbox
+    ? [mailbox.email, ...mailbox.sendAsEmails]
+        .map((email) => email.trim().toLowerCase())
+        .filter(Boolean)
+        .filter((email, index, arr) => arr.indexOf(email) === index)
+        .map((email) => ({ email }))
+    : [];
+
   return (
     <main
       style={{
@@ -49,7 +63,14 @@ export default async function RulesPage() {
         width: "100%",
       }}
     >
-      <RulesPanel rules={rules} mailboxConnected={!!mailbox} emailTemplates={emailTemplates} />
+      <RulesPanel
+        rules={rules}
+        mailboxConnected={!!mailbox}
+        emailTemplates={emailTemplates}
+        integrations={integrations}
+        sendAsOptions={sendAsOptions}
+        defaultSendAsEmail={mailbox?.defaultSendAsEmail || null}
+      />
     </main>
   );
 }

@@ -284,25 +284,37 @@ async function classifyWithOpenAI({ subject, snippet, textBody, htmlBody, fromEm
   }
 
   const classifyOnce = async (model) => {
+    const startedAt = Date.now();
+    const subjectSafe = (subject || "").slice(0, 500);
+    const textSafe = (textBody || "").trim();
+    const snippetSafe = (snippet || "").trim();
+    const htmlSafe = (htmlBody || "").trim();
+    const bodyForPrompt = textSafe
+      ? textSafe.slice(0, 6000)
+      : snippetSafe
+        ? snippetSafe.slice(0, 1200)
+        : htmlSafe.slice(0, 2000);
+
     const prompt = [
       "You are classifying an email for CRM workflow.",
       "Return ONLY strict JSON with keys:",
-      "category, intent, priority, reply_needed (boolean), message_type, template_key (string or null), confidence, model, raw_json.",
+      "category, intent, priority, reply_needed (boolean), message_type, confidence, model, raw_json.",
       `Allowed category: ${CATEGORIES.join("|")}`,
       `Allowed intent: ${INTENTS.join("|")}`,
       "Allowed priority: low|medium|high",
       "reply_needed: true or false only",
       `Allowed message_type: ${MESSAGE_TYPES.join("|")}`,
-      "template_key: short snake_case id for a reply template, or null if none",
       "",
-      `from: ${fromEmail || "-"}`,
-      `to: ${(toEmails || []).join(", ") || "-"}`,
-      `cc: ${(ccEmails || []).join(", ") || "-"}`,
-      `subject: ${subject || ""}`,
-      `snippet: ${snippet || ""}`,
-      `textBody: ${textBody ? textBody.slice(0, 6000) : ""}`,
-      `htmlBody: ${htmlBody ? htmlBody.slice(0, 2000) : ""}`,
+      `subject: ${subjectSafe}`,
+      `body: ${bodyForPrompt}`,
     ].join("\n");
+    const payloadLength = subjectSafe.length + bodyForPrompt.length;
+    console.info("[llm] classification request started", {
+      model,
+      promptLength: prompt.length,
+      payloadLength,
+      threadMessageCount: threadMessageCount ?? 0,
+    });
 
     const res = await fetch("https://api.openai.com/v1/chat/completions", {
       method: "POST",
@@ -322,7 +334,15 @@ async function classifyWithOpenAI({ subject, snippet, textBody, htmlBody, fromEm
     const data = await res.json();
     const content = data?.choices?.[0]?.message?.content;
     if (!content) throw new Error("OpenAI returned empty classification content");
-    return normalizeLLMClassification(JSON.parse(content), model);
+    const normalized = normalizeLLMClassification(JSON.parse(content), model);
+    console.info("[llm] classification request finished", {
+      model,
+      durationMs: Date.now() - startedAt,
+      category: normalized.category,
+      intent: normalized.intent,
+      confidence: normalized.confidence,
+    });
+    return normalized;
   };
 
   try {

@@ -30,6 +30,11 @@ async function evaluateRulesForThreads({ mailboxId, threadIds, latestMessageIdBy
     where: { mailboxId, enabled: true },
     orderBy: [{ priority: "asc" }, { createdAt: "asc" }],
   });
+  console.info("[decision-engine] enabled rules loaded", {
+    mailboxId,
+    ruleCount: rules.length,
+    threadIds: threadIds.length,
+  });
   if (rules.length === 0) return { decisions: 0, actions: 0 };
 
   let decisionsCount = 0;
@@ -53,6 +58,12 @@ async function evaluateRulesForThreads({ mailboxId, threadIds, latestMessageIdBy
         snippet: true,
         textBody: true,
         htmlBody: true,
+        fromPerson: {
+          select: {
+            email: true,
+            customFieldsJson: true,
+          },
+        },
       },
     });
 
@@ -104,16 +115,30 @@ async function evaluateRulesForThreads({ mailboxId, threadIds, latestMessageIdBy
         select: { id: true },
       });
       decisionsCount += 1;
+      console.info("[decision-engine] rule matched", {
+        mailboxId,
+        threadId,
+        ruleId: rule.id,
+        ruleKey: rule.ruleKey,
+        actionsPlanned: actions.length,
+      });
 
       for (const action of actions) {
         const type = String(action.type || "").trim() || primaryType;
         const params = action.params && typeof action.params === "object" && !Array.isArray(action.params) ? action.params : {};
+
+        const integrationIdRaw =
+          type === "run_integration" && params.integrationId != null
+            ? String(params.integrationId).trim()
+            : "";
+        const integrationId = integrationIdRaw || undefined;
 
         await prisma.gmailAction.create({
           data: {
             decisionId: decision.id,
             type,
             status: "PENDING",
+            ...(integrationId ? { integrationId } : {}),
             payloadJson: {
               ruleId: rule.id,
               ruleKey: rule.ruleKey,
@@ -132,6 +157,11 @@ async function evaluateRulesForThreads({ mailboxId, threadIds, latestMessageIdBy
     }
   }
 
+  console.info("[decision-engine] evaluation finished", {
+    mailboxId,
+    decisions: decisionsCount,
+    actions: actionsCount,
+  });
   return { decisions: decisionsCount, actions: actionsCount };
 }
 

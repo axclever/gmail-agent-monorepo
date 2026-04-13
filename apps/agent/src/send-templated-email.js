@@ -51,8 +51,8 @@ async function resolveLastInboundPersonContext(threadId) {
 /**
  * @param {object} opts
  * @param {import("googleapis").gmail_v1.Gmail} opts.gmail
- * @param {{ id: string; email: string }} opts.mailbox
- * @param {{ templateKey: string; to?: string; variables?: Record<string, unknown> }} opts.params
+ * @param {{ id: string; email: string; sendAsEmails?: string[]; defaultSendAsEmail?: string | null }} opts.mailbox
+ * @param {{ templateKey: string; to?: string; variables?: Record<string, unknown>; createDraft?: boolean; fromAliasEmail?: string }} opts.params
  * @param {string} opts.threadId - internal thread id
  */
 async function sendTemplatedEmail({ gmail, mailbox, params, threadId }) {
@@ -91,31 +91,55 @@ async function sendTemplatedEmail({ gmail, mailbox, params, threadId }) {
     select: { gmailThreadId: true },
   });
 
+  const requestedAlias = String(params.fromAliasEmail || "").trim().toLowerCase();
+  const defaultAlias = String(mailbox.defaultSendAsEmail || "").trim().toLowerCase();
+  const allowedSenders = new Set(
+    [mailbox.email, ...(Array.isArray(mailbox.sendAsEmails) ? mailbox.sendAsEmails : [])]
+      .map((email) => String(email || "").trim().toLowerCase())
+      .filter(Boolean),
+  );
+  const fromEmail =
+    requestedAlias && allowedSenders.has(requestedAlias)
+      ? requestedAlias
+      : defaultAlias && allowedSenders.has(defaultAlias)
+        ? defaultAlias
+        : mailbox.email;
+
   const rfc822 = buildRfc822PlainText({
-    from: mailbox.email,
+    from: fromEmail,
     to,
     subject,
     body,
   });
 
   const raw = toBase64UrlUtf8(rfc822);
-  const sendBody = { raw };
-  if (thread?.gmailThreadId) {
-    sendBody.threadId = thread.gmailThreadId;
+  // Safety lock: real sends are disabled for now.
+  const createDraft = true;
+  const gmailThreadId = thread?.gmailThreadId || null;
+
+  if (createDraft) {
+    const draftReq = { message: { raw } };
+    if (gmailThreadId) {
+      draftReq.message.threadId = gmailThreadId;
+    }
+    const draft = await gmail.users.drafts.create({
+      userId: "me",
+      requestBody: draftReq,
+    });
+    return {
+      mode: "draft",
+      draftId: draft.data.id || null,
+      gmailMessageId: draft.data.message?.id || null,
+      threadId: draft.data.message?.threadId || gmailThreadId,
+      to,
+      fromAliasEmail: fromEmail,
+      templateKey,
+      subject,
+    };
   }
 
-  const sent = await gmail.users.messages.send({
-    userId: "me",
-    requestBody: sendBody,
-  });
-
-  return {
-    gmailMessageId: sent.data.id || null,
-    threadId: sent.data.threadId || thread?.gmailThreadId || null,
-    to,
-    templateKey,
-    subject,
-  };
+  // Unreachable while safety lock is enabled.
+  throw new Error("Direct email sending is disabled. Only draft creation is allowed.");
 }
 
 module.exports = {

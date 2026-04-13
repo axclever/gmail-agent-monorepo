@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Inbox, ListChecks, Mail, Plug, SlidersHorizontal, Users } from "lucide-react";
+import { Inbox, ListChecks, Mail, SlidersHorizontal, Users } from "lucide-react";
 import { Box, Button, Flex } from "@radix-ui/themes";
 
 const NAV_ITEMS = [
@@ -11,7 +11,6 @@ const NAV_ITEMS = [
   { href: "/rules", label: "Rules", Icon: SlidersHorizontal },
   { href: "/email-templates", label: "Email templates", Icon: Mail },
   { href: "/actions", label: "Actions", Icon: ListChecks },
-  { href: "/integrations", label: "Integrations", Icon: Plug },
 ];
 
 export function SidebarNav() {
@@ -20,8 +19,7 @@ export function SidebarNav() {
   return (
     <Flex direction="column" gap="2">
       {NAV_ITEMS.map(({ href, label, Icon }) => {
-        const isActive =
-          href === "/email-templates" ? pathname.startsWith("/email-templates") : pathname === href;
+        const isActive = href === "/email-templates" ? pathname.startsWith("/email-templates") : pathname === href;
         return (
           <Button
             key={href}

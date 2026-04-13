@@ -76,6 +76,7 @@ function buildThreadTranscript(thread) {
 async function analyzeThreadOnce(model, transcript) {
   const apiKey = process.env.OPENAI_API_KEY;
   if (!apiKey) throw new Error("Missing OPENAI_API_KEY");
+  const startedAt = Date.now();
 
   const prompt = [
     "You analyze an email thread for a CRM assistant.",
@@ -91,6 +92,11 @@ async function analyzeThreadOnce(model, transcript) {
     "Transcript:",
     transcript,
   ].join("\n");
+  console.info("[llm] thread analysis request started", {
+    model,
+    promptLength: prompt.length,
+    transcriptLength: transcript.length,
+  });
 
   const res = await fetch("https://api.openai.com/v1/chat/completions", {
     method: "POST",
@@ -110,7 +116,15 @@ async function analyzeThreadOnce(model, transcript) {
   const data = await res.json();
   const content = data?.choices?.[0]?.message?.content;
   if (!content) throw new Error("OpenAI returned empty thread analysis");
-  return JSON.parse(content);
+  const parsed = JSON.parse(content);
+  console.info("[llm] thread analysis request finished", {
+    model,
+    durationMs: Date.now() - startedAt,
+    currentIntent: parsed?.currentIntent ?? parsed?.intent ?? null,
+    needsReply: parsed?.needsReply ?? null,
+    confidence: parsed?.confidence ?? null,
+  });
+  return parsed;
 }
 
 /**

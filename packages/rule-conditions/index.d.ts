@@ -20,6 +20,7 @@ export function buildConditionContextFromThreadRow(
   classification: Record<string, unknown>;
   email: { subject_body_text: string };
   thread: Record<string, unknown>;
+  person: Record<string, unknown>;
 };
 
 export function ruleConditionsMatch(
@@ -28,5 +29,6 @@ export function ruleConditionsMatch(
     classification: Record<string, unknown>;
     email: { subject_body_text: string };
     thread: Record<string, unknown>;
+    person?: Record<string, unknown>;
   },
 ): boolean;

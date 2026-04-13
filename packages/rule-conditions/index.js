@@ -1,6 +1,6 @@
 /**
  * Evaluates rule conditions[] against a fact context built per thread.
- * Field paths: classification.*, email.*, thread.*
+ * Field paths: classification.*, email.*, thread.*, person.*
  * Thread-only facts (recommended): thread.lastMessageDirection, thread.intent.
  * Optional per-row `join`: "AND" | "OR" — combines with the previous result (first row ignores join).
  */
@@ -99,6 +99,17 @@ function evaluateOneCondition(raw, context, haystack) {
   } else if (field.startsWith("thread.")) {
     const sub = field.slice("thread.".length);
     actual = context.thread ? context.thread[sub] : undefined;
+  } else if (field.startsWith("person.")) {
+    const sub = field.slice("person.".length);
+    const parts = sub.split(".");
+    actual = context.person;
+    for (const key of parts) {
+      if (actual == null || typeof actual !== "object") {
+        actual = undefined;
+        break;
+      }
+      actual = actual[key];
+    }
   } else {
     return false;
   }
@@ -151,6 +162,12 @@ function buildConditionContextFromThreadRow(thread, latestMessage) {
   }
   const classification = buildClassificationFacts(clsByKind, replyNeededBool);
   const subjectBodyText = buildEmailHaystack(latestMessage);
+  const senderCustom =
+    latestMessage?.fromPerson?.customFieldsJson &&
+    typeof latestMessage.fromPerson.customFieldsJson === "object" &&
+    !Array.isArray(latestMessage.fromPerson.customFieldsJson)
+      ? latestMessage.fromPerson.customFieldsJson
+      : {};
   return {
     classification,
     email: { subject_body_text: subjectBodyText },
@@ -161,6 +178,12 @@ function buildConditionContextFromThreadRow(thread, latestMessage) {
       lastMessageDirection: thread.lastMessageDirection || null,
       intent: clsByKind.get("INTENT") || thread.lastIntent || null,
       waitingOnOtherParty: !!thread.waitingOnOtherParty,
+    },
+    person: {
+      sender: {
+        email: latestMessage?.fromPerson?.email || null,
+        ...senderCustom,
+      },
     },
   };
 }

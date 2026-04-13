@@ -31,6 +31,8 @@ import {
   type ActionRowState,
   type ConditionRowState,
   type RuleEmailTemplateOption,
+  type RuleIntegrationOption,
+  type RuleSendAsOption,
 } from "./rule-form-model";
 
 export type RuleRow = {
@@ -46,7 +48,7 @@ export type RuleRow = {
   actions: unknown;
 };
 
-type PanelMode = "new" | { edit: string };
+type PanelMode = "idle" | "new" | { edit: string };
 
 function countRuleConditions(conditions: unknown): number {
   if (!Array.isArray(conditions)) return 0;
@@ -60,7 +62,12 @@ function countRuleActions(actions: unknown): number {
   if (!Array.isArray(actions)) return 0;
   return actions.filter((a) => {
     const t = String((a as Record<string, unknown>).type ?? "");
-    return t === "create_draft" || t === "notify" || t === "send_templated_email";
+    return (
+      t === "create_draft" ||
+      t === "notify" ||
+      t === "send_templated_email" ||
+      t === "run_integration"
+    );
   }).length;
 }
 
@@ -224,13 +231,19 @@ export function RulesPanel({
   rules,
   mailboxConnected,
   emailTemplates = [],
+  integrations = [],
+  sendAsOptions = [],
+  defaultSendAsEmail = null,
 }: {
   rules: RuleRow[];
   mailboxConnected: boolean;
   emailTemplates?: RuleEmailTemplateOption[];
+  integrations?: RuleIntegrationOption[];
+  sendAsOptions?: RuleSendAsOption[];
+  defaultSendAsEmail?: string | null;
 }) {
   const router = useRouter();
-  const [mode, setMode] = useState<PanelMode>("new");
+  const [mode, setMode] = useState<PanelMode>("idle");
   const [name, setName] = useState("");
   const [enabled, setEnabled] = useState(true);
   const [priority, setPriority] = useState(100);
@@ -244,9 +257,9 @@ export function RulesPanel({
   const [listIds, setListIds] = useState<string[]>(() => sortRulesForDisplay(rules).map((r) => r.id));
   const [reorderBusy, setReorderBusy] = useState(false);
 
-  const selectionKey = mode === "new" ? "new" : mode.edit;
+  const selectionKey = mode === "new" || mode === "idle" ? mode : mode.edit;
 
-  const selectedRule = mode !== "new" ? rules.find((r) => r.id === mode.edit) : undefined;
+  const selectedRule = typeof mode === "object" ? rules.find((r) => r.id === mode.edit) : undefined;
 
   const hydratedSelectionRef = useRef<string | null>(null);
   const listIdsRef = useRef<string[]>([]);
@@ -309,7 +322,7 @@ export function RulesPanel({
   }
 
   useEffect(() => {
-    if (selectionKey === "new") {
+    if (selectionKey === "new" || selectionKey === "idle") {
       return;
     }
 
@@ -462,7 +475,7 @@ export function RulesPanel({
 
   return (
     <>
-      <Flex direction="column" gap="4" style={{ flex: 1, minHeight: 0, width: "100%" }}>
+      <Flex direction="column" gap="4" style={{ flex: 1, minHeight: 0, width: "100%", overflow: "hidden" }}>
         <Heading size="6" style={{ flexShrink: 0 }}>
           Rules
         </Heading>
@@ -474,6 +487,7 @@ export function RulesPanel({
             minHeight: 0,
             alignItems: "stretch",
             width: "100%",
+            overflow: "hidden",
           }}
         >
           <Flex
@@ -500,7 +514,7 @@ export function RulesPanel({
                 <SortableContext items={orderedRuleIds} strategy={verticalListSortingStrategy}>
                   <Flex direction="column" gap="1">
                     {orderedRules.map((r, index) => {
-                      const selected = mode !== "new" && mode.edit === r.id;
+                      const selected = typeof mode === "object" && mode.edit === r.id;
                       return (
                         <SortableRuleItem
                           key={r.id}
@@ -525,8 +539,6 @@ export function RulesPanel({
           </Box>
           <Button
             type="button"
-            variant="outline"
-            color="gray"
             size="2"
             disabled={!mailboxConnected}
             onClick={openNewRuleForm}
@@ -544,65 +556,99 @@ export function RulesPanel({
             maxHeight: "100%",
             display: "flex",
             flexDirection: "column",
+            paddingLeft: "var(--space-6)",
           }}
         >
           <Box
-            className="smart-scroll"
-            style={{ ...scrollPanelStyle, paddingLeft: "var(--space-6)" }}
+            style={{
+              flex: 1,
+              minHeight: 0,
+              display: "flex",
+              flexDirection: "column",
+              border: "1px solid var(--gray-6)",
+              borderRadius: "var(--radius-4)",
+              background: "var(--gray-a2)",
+              overflow: "hidden",
+            }}
           >
+            <Box className="smart-scroll" style={{ ...scrollPanelStyle, height: "100%", padding: "var(--space-5)" }}>
             {mode === "new" ? (
-              <form onSubmit={onCreate}>
-                <RuleFormFields
-                  name={name}
-                  setName={setName}
-                  enabled={enabled}
-                  setEnabled={setEnabled}
-                  conditionRows={conditionRows}
-                  setConditionRows={setConditionRows}
-                  actionRows={actionRows}
-                  setActionRows={setActionRows}
-                  emailTemplates={emailTemplates}
-                  formError={formError}
-                  disabled={disabled}
-                  mailboxConnected={mailboxConnected}
-                  submitLabel={pendingSave ? "Creating…" : "Create rule"}
-                />
-              </form>
+                <form onSubmit={onCreate}>
+                  <RuleFormFields
+                    name={name}
+                    setName={setName}
+                    enabled={enabled}
+                    setEnabled={setEnabled}
+                    conditionRows={conditionRows}
+                    setConditionRows={setConditionRows}
+                    actionRows={actionRows}
+                    setActionRows={setActionRows}
+                    emailTemplates={emailTemplates}
+                    integrations={integrations}
+                  sendAsOptions={sendAsOptions}
+                  defaultSendAsEmail={defaultSendAsEmail}
+                    formError={formError}
+                    disabled={disabled}
+                    mailboxConnected={mailboxConnected}
+                    submitLabel={pendingSave ? "Creating…" : "Create rule"}
+                  />
+                </form>
             ) : selectedRule ? (
-              <form onSubmit={onUpdate}>
-                <RuleFormFields
-                  name={name}
-                  setName={setName}
-                  enabled={enabled}
-                  setEnabled={setEnabled}
-                  conditionRows={conditionRows}
-                  setConditionRows={setConditionRows}
-                  actionRows={actionRows}
-                  setActionRows={setActionRows}
-                  emailTemplates={emailTemplates}
-                  formError={formError}
-                  disabled={disabled}
-                  mailboxConnected={mailboxConnected}
-                  submitLabel={pendingSave ? "Saving…" : "Save changes"}
-                  footer={
-                    <Button
-                      type="button"
-                      variant="soft"
-                      color="red"
-                      onClick={onDelete}
-                      disabled={pendingDelete}
-                      style={{ alignSelf: "flex-start" }}
-                    >
-                      {pendingDelete ? "Deleting…" : "Delete rule"}
-                    </Button>
-                  }
-                />
-              </form>
+                <form onSubmit={onUpdate}>
+                  <RuleFormFields
+                    name={name}
+                    setName={setName}
+                    enabled={enabled}
+                    setEnabled={setEnabled}
+                    conditionRows={conditionRows}
+                    setConditionRows={setConditionRows}
+                    actionRows={actionRows}
+                    setActionRows={setActionRows}
+                    emailTemplates={emailTemplates}
+                    integrations={integrations}
+                  sendAsOptions={sendAsOptions}
+                  defaultSendAsEmail={defaultSendAsEmail}
+                    formError={formError}
+                    disabled={disabled}
+                    mailboxConnected={mailboxConnected}
+                    submitLabel={pendingSave ? "Saving…" : "Save changes"}
+                    footer={
+                      <Button
+                        type="button"
+                        variant="soft"
+                        color="red"
+                        onClick={onDelete}
+                        disabled={pendingDelete}
+                      >
+                        {pendingDelete ? "Deleting…" : "Delete rule"}
+                      </Button>
+                    }
+                  />
+                </form>
             ) : (
-              <Text color="gray" size="2">
-                Select a rule from the list, or use Add new rule.
-              </Text>
-            )}
+              <Flex
+                direction="column"
+                gap="3"
+                align="center"
+                justify="center"
+                style={{ minHeight: "100%", width: "100%", textAlign: "center" }}
+              >
+                <Text color="gray" size="2">
+                  {rules.length === 0
+                    ? "Rules not found. Create your first rule."
+                    : "Select a rule from the list or create your own."}
+                </Text>
+                <Button
+                  type="button"
+                  size="2"
+                  disabled={!mailboxConnected}
+                  onClick={openNewRuleForm}
+                >
+                  Create rule
+                </Button>
+              </Flex>
+              )}
+            </Box>
           </Box>
         </Box>
       </Flex>

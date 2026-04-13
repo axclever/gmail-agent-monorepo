@@ -65,6 +65,7 @@ export async function getPersonDetail(personId: string) {
       id: true,
       email: true,
       name: true,
+      customFieldsJson: true,
       firstSeenAt: true,
       lastSeenAt: true,
       sentMessages: {
@@ -160,6 +161,10 @@ export async function getPersonDetail(personId: string) {
       id: person.id,
       email: person.email,
       name: person.name,
+      customFieldsJson:
+        person.customFieldsJson && typeof person.customFieldsJson === "object"
+          ? person.customFieldsJson
+          : null,
       firstSeenAt: person.firstSeenAt,
       lastSeenAt: person.lastSeenAt,
     },

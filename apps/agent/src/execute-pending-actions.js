@@ -1,11 +1,14 @@
+/**
+ * Runs pending Gmail actions for one mailbox (e.g. send_templated_email).
+ * The main handler calls this only when `EXECUTE_PENDING_ACTIONS=true`; otherwise actions stay PENDING.
+ *
+ * @param {import("@prisma/client").GmailMailbox} mailbox
+ */
+
 const { prisma } = require("./persistence");
 const { createGmailForMailbox } = require("./gmail-auth");
 const { sendTemplatedEmail } = require("./send-templated-email");
 
-/**
- * Runs pending Gmail actions for one mailbox (e.g. send_templated_email).
- * @param {import("@prisma/client").GmailMailbox} mailbox
- */
 async function executePendingActionsForMailbox(mailbox) {
   const pending = await prisma.gmailAction.findMany({
     where: {
@@ -45,7 +48,12 @@ async function executePendingActionsForMailbox(mailbox) {
 
       const result = await sendTemplatedEmail({
         gmail,
-        mailbox: { id: mailbox.id, email: mailbox.email },
+        mailbox: {
+          id: mailbox.id,
+          email: mailbox.email,
+          sendAsEmails: mailbox.sendAsEmails || [],
+          defaultSendAsEmail: mailbox.defaultSendAsEmail || null,
+        },
         params,
         threadId: action.decision.threadId,
       });

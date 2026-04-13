@@ -1,19 +1,32 @@
 const { google } = require("googleapis");
 const { headerMap, extractEmail, extractEmails, extractBodies } = require("./parsers");
-const { GMAIL_EXCLUDE_QUERY, SKIP_SENDERS } = require("./env");
+const { GMAIL_EXCLUDE_QUERY, GMAIL_POLL_WINDOW_MINUTES, SKIP_SENDERS } = require("./env");
 const { prisma, upsertPeopleFromEmails } = require("./persistence");
 const { listSendAsEmailsFromGmail, isOutboundFrom } = require("./gmail-send-as");
 
-const MAX_MESSAGES_PER_RUN = 10;
+const MAX_MESSAGES_PER_RUN = 50;
+const DEFAULT_BASE_QUERY = "-in:chats";
 
-async function listLatestMessageIds(gmail, maxMessages = MAX_MESSAGES_PER_RUN) {
+function buildPollingQuery() {
+  const safeMinutes = Number.isFinite(GMAIL_POLL_WINDOW_MINUTES) && GMAIL_POLL_WINDOW_MINUTES > 0
+    ? Math.floor(GMAIL_POLL_WINDOW_MINUTES)
+    : 30;
+  const afterUnix = Math.floor((Date.now() - safeMinutes * 60 * 1000) / 1000);
+  const parts = [DEFAULT_BASE_QUERY, `after:${afterUnix}`];
+  if (GMAIL_EXCLUDE_QUERY && GMAIL_EXCLUDE_QUERY.trim()) {
+    parts.push(GMAIL_EXCLUDE_QUERY.trim());
+  }
+  return parts.join(" ");
+}
+
+async function listLatestMessageIds(gmail, maxMessages = MAX_MESSAGES_PER_RUN, query = buildPollingQuery()) {
   const ids = [];
   let pageToken;
   while (ids.length < maxMessages) {
     const res = await gmail.users.messages.list({
       userId: "me",
       maxResults: Math.min(100, maxMessages - ids.length),
-      q: GMAIL_EXCLUDE_QUERY,
+      q: query,
       pageToken,
     });
     const refs = res.data.messages || [];
@@ -24,31 +37,12 @@ async function listLatestMessageIds(gmail, maxMessages = MAX_MESSAGES_PER_RUN) {
   return ids;
 }
 
-async function listChangedMessageIds(gmail, startHistoryId) {
-  const ids = new Set();
-  let pageToken;
-  while (true) {
-    const res = await gmail.users.history.list({
-      userId: "me",
-      startHistoryId,
-      historyTypes: ["messageAdded"],
-      pageToken,
-      maxResults: 500,
-    });
-    for (const h of res.data.history || []) {
-      for (const add of h.messagesAdded || []) if (add.message?.id) ids.add(add.message.id);
-      for (const m of h.messages || []) if (m?.id) ids.add(m.id);
-    }
-    if (!res.data.nextPageToken) break;
-    pageToken = res.data.nextPageToken;
-  }
-  return [...ids];
-}
-
 async function processMessage({ gmail, mailbox, messageId, profileEmail, sendAsEmails }) {
   const msgRes = await gmail.users.messages.get({ userId: "me", id: messageId, format: "full" });
   const msg = msgRes.data;
-  if (!msg.id || !msg.threadId) return { skipped: true, created: 0, updated: 0 };
+  if (!msg.id || !msg.threadId) {
+    return { skipped: true, skipReason: "missing_id_or_thread", created: 0, updated: 0 };
+  }
 
   const headers = headerMap(msg.payload?.headers || []);
   const subject = headers.get("subject") || null;
@@ -57,7 +51,9 @@ async function processMessage({ gmail, mailbox, messageId, profileEmail, sendAsE
   const ccRaw = headers.get("cc") || "";
   const bccRaw = headers.get("bcc") || "";
   const fromEmail = extractEmail(fromRaw);
-  if (fromEmail && SKIP_SENDERS.has(fromEmail)) return { skipped: true, created: 0, updated: 0 };
+  if (fromEmail && SKIP_SENDERS.has(fromEmail)) {
+    return { skipped: true, skipReason: "skip_sender", fromRaw, fromEmail, created: 0, updated: 0 };
+  }
 
   const toEmails = extractEmails(toRaw);
   const ccEmails = extractEmails(ccRaw);
@@ -92,6 +88,9 @@ async function processMessage({ gmail, mailbox, messageId, profileEmail, sendAsE
     where: { mailboxId_gmailMessageId: { mailboxId: mailbox.id, gmailMessageId: msg.id } },
     select: { id: true },
   });
+  if (existing) {
+    return { skipped: true, skipReason: "already_exists", created: 0, updated: 0 };
+  }
   const savedMessage = await prisma.gmailMessage.upsert({
     where: { mailboxId_gmailMessageId: { mailboxId: mailbox.id, gmailMessageId: msg.id } },
     update: {
@@ -162,7 +161,7 @@ async function processMessage({ gmail, mailbox, messageId, profileEmail, sendAsE
   return {
     skipped: false,
     created: existing ? 0 : 1,
-    updated: existing ? 1 : 0,
+    updated: 0,
     threadId: thread.id,
   };
 }
@@ -213,23 +212,9 @@ async function syncMailbox(mailbox) {
       );
     }
 
-    let mode = "full";
-    let messageIds = [];
-    if (mailbox.lastHistoryId) {
-      try {
-        messageIds = await listChangedMessageIds(gmail, mailbox.lastHistoryId);
-        mode = "incremental";
-      } catch (e) {
-        const reason = e?.errors?.[0]?.reason || e?.code || "";
-        if (reason === 404 || String(reason).toLowerCase().includes("history")) {
-          messageIds = await listLatestMessageIds(gmail, MAX_MESSAGES_PER_RUN);
-          mode = "full-fallback";
-        } else throw e;
-      }
-    } else {
-      messageIds = await listLatestMessageIds(gmail, MAX_MESSAGES_PER_RUN);
-      mode = "full-initial";
-    }
+    const pollQuery = buildPollingQuery();
+    const mode = "polling-window";
+    let messageIds = await listLatestMessageIds(gmail, MAX_MESSAGES_PER_RUN, pollQuery);
     if (messageIds.length > MAX_MESSAGES_PER_RUN) {
       messageIds = messageIds.slice(0, MAX_MESSAGES_PER_RUN);
     }
@@ -237,10 +222,27 @@ async function syncMailbox(mailbox) {
     let fetched = 0;
     let created = 0;
     let updated = 0;
+    let skipped = 0;
+    let skippedBySender = 0;
+    let skippedInvalid = 0;
+    let skippedAlreadyExists = 0;
     const touchedThreadIds = new Set();
     for (const messageId of messageIds) {
       const result = await processMessage({ gmail, mailbox, messageId, profileEmail, sendAsEmails });
-      if (result.skipped) continue;
+      if (result.skipped) {
+        skipped += 1;
+        if (result.skipReason === "skip_sender") skippedBySender += 1;
+        if (result.skipReason === "missing_id_or_thread") skippedInvalid += 1;
+        if (result.skipReason === "already_exists") skippedAlreadyExists += 1;
+        console.info("[sync-mailbox] message skipped", {
+          mailboxId: mailbox.id,
+          messageId,
+          reason: result.skipReason || "unknown",
+          fromEmail: result.fromEmail || null,
+          fromRaw: result.fromRaw || null,
+        });
+        continue;
+      }
       fetched += 1;
       created += result.created;
       updated += result.updated;
@@ -267,10 +269,15 @@ async function syncMailbox(mailbox) {
       mailboxId: mailbox.id,
       email: profileEmail,
       mode,
+      pollQuery,
       changedCandidates: messageIds.length,
       fetched,
       created,
       updated,
+      skipped,
+      skippedBySender,
+      skippedInvalid,
+      skippedAlreadyExists,
       lastHistoryId: mailboxUpdate.lastHistoryId,
       touchedThreadIds: [...touchedThreadIds],
     };

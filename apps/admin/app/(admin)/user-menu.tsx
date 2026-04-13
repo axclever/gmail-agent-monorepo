@@ -17,7 +17,10 @@ export function UserMenu() {
       </DropdownMenu.Trigger>
       <DropdownMenu.Content align="end">
         <DropdownMenu.Item onSelect={() => router.push("/mailbox")}>Mailbox</DropdownMenu.Item>
-        <DropdownMenu.Item>Settings</DropdownMenu.Item>
+        <DropdownMenu.Item onSelect={() => router.push("/integrations")}>
+          Integrations
+        </DropdownMenu.Item>
+        <DropdownMenu.Item onSelect={() => router.push("/settings")}>Settings</DropdownMenu.Item>
         <DropdownMenu.Separator />
         <DropdownMenu.Item color="red" onSelect={() => signOut({ callbackUrl: "/" })}>
           Sign out

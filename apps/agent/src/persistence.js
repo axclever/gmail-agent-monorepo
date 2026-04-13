@@ -158,17 +158,6 @@ async function refreshThreadDerivedFields(threadIds) {
   }
 }
 
-function toBoolOrNull(value) {
-  if (value === true) return true;
-  if (value === false) return false;
-  if (typeof value === "string") {
-    const v = value.trim().toLowerCase();
-    if (["true", "yes", "1"].includes(v)) return true;
-    if (["false", "no", "0"].includes(v)) return false;
-  }
-  return null;
-}
-
 async function computeThreadProcessingState(threadIds) {
   if (threadIds.length === 0) return { processed: 0, needsEvaluation: 0 };
 
@@ -193,13 +182,11 @@ async function computeThreadProcessingState(threadIds) {
     });
     if (!thread) continue;
 
-    const analysisNeedsReply = toBoolOrNull(thread.threadAnalysisJson?.needsReply);
     const statusNormalized = String(thread.status || "").toUpperCase();
     const isTerminal = terminalStatuses.has(statusNormalized);
     const replyRequired =
       thread.lastMessageDirection === "INBOUND" &&
       thread.hasUnrepliedInbound === true &&
-      analysisNeedsReply === true &&
       !isTerminal;
 
     // MVP rule: actionRequired follows replyRequired.

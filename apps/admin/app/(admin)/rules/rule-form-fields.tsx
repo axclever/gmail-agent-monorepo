@@ -1,7 +1,7 @@
 "use client";
 
-import type { Dispatch, SetStateAction } from "react";
-import { useMemo } from "react";
+import React, { type Dispatch, type SetStateAction } from "react";
+import { useEffect, useMemo } from "react";
 import {
   Box,
   Button,
@@ -17,18 +17,18 @@ import { X } from "lucide-react";
 import { ConditionMatchesPreview } from "./condition-matches-preview";
 import {
   BOOLEAN_FIELDS,
-  CHANNEL_OPTIONS,
   CONDITION_OPERATORS,
   type ActionRowState,
   type ConditionRowState,
   type RuleEmailTemplateOption,
+  type RuleIntegrationOption,
+  type RuleSendAsOption,
   emptyActionRow,
   emptyConditionRow,
   isSupportedThreadConditionField,
   THREAD_CONDITION_FIELDS,
   THREAD_INTENT_OPTIONS,
   THREAD_LAST_MESSAGE_DIRECTION_OPTIONS,
-  TEMPLATE_OPTIONS,
 } from "./rule-form-model";
 
 const EMPTY_VALUE = "__empty__";
@@ -46,11 +46,15 @@ function conditionFieldSelectItems(row: ConditionRowState): { value: string; lab
 function SendEmailActionFields({
   row,
   emailTemplates,
+  sendAsOptions,
+  defaultFromAlias,
   disabled,
   updateAction,
 }: {
   row: ActionRowState;
   emailTemplates: RuleEmailTemplateOption[];
+  sendAsOptions: RuleSendAsOption[];
+  defaultFromAlias: string;
   disabled: boolean;
   updateAction: (id: string, patch: Partial<ActionRowState>) => void;
 }) {
@@ -85,6 +89,49 @@ function SendEmailActionFields({
           </Select.Root>
         </Box>
       </Flex>
+
+      <Flex align="center" gap="2" wrap="wrap">
+        <Text size="2" color="gray" style={{ flexShrink: 0 }}>
+          From alias
+        </Text>
+        <Box style={{ flex: "1 1 200px", minWidth: 160 }}>
+          <Select.Root
+            value={row.fromAliasEmail.trim() || defaultFromAlias || EMPTY_VALUE}
+            onValueChange={(v) => updateAction(row.id, { fromAliasEmail: v === EMPTY_VALUE ? "" : v })}
+            disabled={disabled || sendAsOptions.length === 0}
+          >
+            <Select.Trigger variant="surface" placeholder="From alias" style={{ width: "100%", minHeight: 36 }} />
+            <Select.Content position="popper">
+              <Select.Item value={EMPTY_VALUE}>Primary mailbox address</Select.Item>
+              {sendAsOptions.map((s) => (
+                <Select.Item key={s.email} value={s.email}>
+                  {s.email}
+                </Select.Item>
+              ))}
+            </Select.Content>
+          </Select.Root>
+        </Box>
+      </Flex>
+
+      <Text
+        as="label"
+        size="2"
+        style={{
+          display: "inline-flex",
+          alignItems: "center",
+          gap: 8,
+          cursor: disabled ? "default" : "pointer",
+          userSelect: "none",
+          width: "fit-content",
+        }}
+      >
+        <Checkbox
+          checked={row.createDraft}
+          onCheckedChange={(v) => updateAction(row.id, { createDraft: v === true })}
+          disabled={disabled}
+        />
+        Create draft
+      </Text>
 
       {emailTemplates.length === 0 ? (
         <Text size="2" color="gray">
@@ -140,6 +187,65 @@ function SendEmailActionFields({
   );
 }
 
+function RunIntegrationActionFields({
+  row,
+  integrations,
+  disabled,
+  updateAction,
+}: {
+  row: ActionRowState;
+  integrations: RuleIntegrationOption[];
+  disabled: boolean;
+  updateAction: (id: string, patch: Partial<ActionRowState>) => void;
+}) {
+  const knownIds = new Set(integrations.map((i) => i.id));
+  const orphanId = row.integrationId.trim();
+  const showOrphan = orphanId && !knownIds.has(orphanId);
+
+  return (
+    <Flex direction="column" gap="2" style={{ flex: "1 1 320px", minWidth: 220 }}>
+      <Flex align="center" gap="2" wrap="wrap">
+        <Text size="2" color="gray" style={{ flexShrink: 0 }}>
+          Integration
+        </Text>
+        <Box style={{ flex: "1 1 200px", minWidth: 160 }}>
+          <Select.Root
+            value={row.integrationId.trim() || EMPTY_VALUE}
+            onValueChange={(v) =>
+              updateAction(row.id, { integrationId: v === EMPTY_VALUE ? "" : v })
+            }
+            disabled={disabled || integrations.length === 0}
+          >
+            <Select.Trigger variant="surface" placeholder="Integration" style={{ width: "100%", minHeight: 36 }} />
+            <Select.Content position="popper">
+              <Select.Item value={EMPTY_VALUE}>Integration…</Select.Item>
+              {integrations.map((i) => (
+                <Select.Item key={i.id} value={i.id}>
+                  {i.name} ({i.type})
+                </Select.Item>
+              ))}
+              {showOrphan ? (
+                <Select.Item value={orphanId}>Missing: {orphanId.slice(0, 12)}…</Select.Item>
+              ) : null}
+            </Select.Content>
+          </Select.Root>
+        </Box>
+      </Flex>
+
+      {integrations.length === 0 ? (
+        <Text size="2" color="gray">
+          Add an integration under Integrations in the sidebar. When the rule matches, a pending action is created for
+          the worker to run it (execution is gated by agent settings).
+        </Text>
+      ) : (
+        <Text size="2" color="gray">
+          Triggers a run for the selected integration when the rule matches.
+        </Text>
+      )}
+    </Flex>
+  );
+}
+
 type Props = {
   name: string;
   setName: (v: string) => void;
@@ -150,6 +256,9 @@ type Props = {
   actionRows: ActionRowState[];
   setActionRows: Dispatch<SetStateAction<ActionRowState[]>>;
   emailTemplates: RuleEmailTemplateOption[];
+  integrations: RuleIntegrationOption[];
+  sendAsOptions: RuleSendAsOption[];
+  defaultSendAsEmail: string | null;
   formError: string | null;
   disabled: boolean;
   mailboxConnected: boolean;
@@ -167,12 +276,36 @@ export function RuleFormFields({
   actionRows,
   setActionRows,
   emailTemplates,
+  integrations,
+  sendAsOptions,
+  defaultSendAsEmail,
   formError,
   disabled,
   mailboxConnected,
   submitLabel,
   footer,
 }: Props) {
+  const hasConditions = conditionRows.length > 0;
+  const hasActions = actionRows.length > 0;
+  const defaultFromAlias = useMemo(() => {
+    const preferred = String(defaultSendAsEmail || "").trim().toLowerCase();
+    if (preferred) return preferred;
+    return sendAsOptions[0]?.email || "";
+  }, [defaultSendAsEmail, sendAsOptions]);
+
+  useEffect(() => {
+    if (!defaultFromAlias) return;
+    setActionRows((prev) => {
+      let changed = false;
+      const next = prev.map((r) => {
+        if (r.type !== "send_templated_email" || r.fromAliasEmail.trim()) return r;
+        changed = true;
+        return { ...r, fromAliasEmail: defaultFromAlias };
+      });
+      return changed ? next : prev;
+    });
+  }, [defaultFromAlias, setActionRows]);
+
   function updateCondition(id: string, patch: Partial<ConditionRowState>) {
     setConditionRows((prev) => prev.map((r) => (r.id === id ? { ...r, ...patch } : r)));
   }
@@ -206,7 +339,7 @@ export function RuleFormFields({
             <TextField.Root
               value={name}
               onChange={(e) => setName(e.target.value)}
-              placeholder="Lead: create draft and notify"
+              placeholder="e.g. Follow up when intent is pricing"
               disabled={disabled}
               required
             />
@@ -240,13 +373,8 @@ export function RuleFormFields({
           Conditions
         </Text>
 
-        {conditionRows.length === 0 ? (
-          <Text color="gray" size="2">
-            No conditions (rule matches every evaluated thread). Add conditions to narrow the match. Conditions use
-            thread-level facts only (last message direction and rolled-up intent).
-          </Text>
-        ) : (
-          conditionRows.map((row, index) => {
+        {conditionRows.length > 0
+          ? conditionRows.map((row, index) => {
             const simple = isSupportedThreadConditionField(row.field);
             const legacy = row.field.trim() && !simple;
             const intentKnown = new Set(THREAD_INTENT_OPTIONS.map((o) => o.value));
@@ -299,6 +427,8 @@ export function RuleFormFields({
                           patch.valueStr = "INBOUND";
                         } else if (newField === "thread.intent") {
                           patch.valueStr = "question";
+                        } else if (newField === "person.senderAttr") {
+                          patch.valueStr = "entity_type=lead";
                         } else if (BOOLEAN_FIELDS.has(newField)) {
                           patch.valueStr = "true";
                         } else if (!newField) {
@@ -405,7 +535,9 @@ export function RuleFormFields({
                         value={row.valueStr}
                         onChange={(e) => updateCondition(row.id, { valueStr: e.target.value })}
                         placeholder={
-                          row.operator === "contains_any"
+                          row.field === "person.senderAttr"
+                            ? "e.g. entity_type=expert"
+                            : row.operator === "contains_any"
                             ? 'e.g. pricing, interested or ["a","b"]'
                             : "Value"
                         }
@@ -431,7 +563,7 @@ export function RuleFormFields({
               </Flex>
             );
           })
-        )}
+          : null}
 
         <div>
           <Button
@@ -446,144 +578,147 @@ export function RuleFormFields({
           </Button>
         </div>
 
-        <ConditionMatchesPreview
-          mailboxConnected={mailboxConnected}
-          disabled={disabled}
-          conditionRows={conditionRows}
-        />
+        {conditionRows.length > 0 ? (
+          <ConditionMatchesPreview
+            mailboxConnected={mailboxConnected}
+            disabled={disabled}
+            conditionRows={conditionRows}
+          />
+        ) : null}
       </Flex>
 
       <Separator size="4" />
 
-      <Flex direction="column" gap="3">
-        <Text size="3" weight="bold">
-          Actions
-        </Text>
-        <Text color="gray" size="2">
-          Multiple actions all run when the rule matches (logical AND).
-        </Text>
+      {hasConditions && hasActions ? (
+        <Flex direction="column" gap="3">
+          <Text size="3" weight="bold">
+            Actions
+          </Text>
+          <Text color="gray" size="2">
+            Multiple actions all run when the rule matches (logical AND).
+          </Text>
 
-        <Flex direction="column" gap="5">
-        {actionRows.map((row) => (
-          <Flex
-            key={row.id}
-            gap="2"
-            align={row.type === "send_templated_email" ? "start" : "center"}
-            wrap="wrap"
-          >
-            <Box style={{ flex: "0 1 160px", minWidth: 120 }}>
-              <Select.Root
-                value={row.type || EMPTY_VALUE}
-                onValueChange={(v) => {
-                  const type = v === EMPTY_VALUE ? "" : (v as ActionRowState["type"]);
-                  const patch: Partial<ActionRowState> = { type };
-                  if (type === "send_templated_email" && !row.emailTemplateKey.trim() && emailTemplates[0]) {
-                    patch.emailTemplateKey = emailTemplates[0].templateKey;
-                  }
-                  updateAction(row.id, patch);
-                }}
-                disabled={disabled}
-              >
-                <Select.Trigger variant="surface" style={{ width: "100%", minHeight: 36 }} />
-                <Select.Content position="popper">
-                  <Select.Item value={EMPTY_VALUE}>Type…</Select.Item>
-                  <Select.Item value="create_draft">create_draft</Select.Item>
-                  <Select.Item value="notify">notify</Select.Item>
-                  <Select.Item value="send_templated_email">Send email</Select.Item>
-                </Select.Content>
-              </Select.Root>
-            </Box>
-
-            {row.type === "create_draft" ? (
-              <Flex align="center" gap="2" style={{ flex: "1 1 200px" }}>
-                <Text size="2" color="gray" style={{ flexShrink: 0 }}>
-                  template:
-                </Text>
-                <Box style={{ flex: 1, minWidth: 120 }}>
-                  <Select.Root
-                    value={row.templateId || TEMPLATE_OPTIONS[0]}
-                    onValueChange={(v) => updateAction(row.id, { templateId: v })}
-                    disabled={disabled}
-                  >
-                    <Select.Trigger variant="surface" style={{ width: "100%", minHeight: 36 }} />
-                    <Select.Content position="popper">
-                      {[...TEMPLATE_OPTIONS, row.templateId].filter((t, i, a) => a.indexOf(t) === i).map((t) => (
-                        <Select.Item key={t} value={t}>
-                          {t}
-                        </Select.Item>
-                      ))}
-                    </Select.Content>
-                  </Select.Root>
-                </Box>
-              </Flex>
-            ) : null}
-
-            {row.type === "notify" ? (
-              <Flex align="center" gap="2" style={{ flex: "1 1 200px" }}>
-                <Text size="2" color="gray" style={{ flexShrink: 0 }}>
-                  channel:
-                </Text>
-                <Box style={{ flex: 1, minWidth: 120 }}>
-                  <Select.Root
-                    value={row.channel || CHANNEL_OPTIONS[0]}
-                    onValueChange={(v) => updateAction(row.id, { channel: v })}
-                    disabled={disabled}
-                  >
-                    <Select.Trigger variant="surface" style={{ width: "100%", minHeight: 36 }} />
-                    <Select.Content position="popper">
-                      {[...CHANNEL_OPTIONS, row.channel].filter((c, i, a) => a.indexOf(c) === i).map((c) => (
-                        <Select.Item key={c} value={c}>
-                          {c}
-                        </Select.Item>
-                      ))}
-                    </Select.Content>
-                  </Select.Root>
-                </Box>
-              </Flex>
-            ) : null}
-
-            {row.type === "send_templated_email" ? (
-              <SendEmailActionFields
-                row={row}
-                emailTemplates={emailTemplates}
-                disabled={disabled}
-                updateAction={updateAction}
-              />
-            ) : null}
-
-            <IconButton
-              type="button"
-              variant="ghost"
-              color="gray"
-              disabled={disabled || actionRows.length <= 1}
-              aria-label="Remove action"
-              onClick={() => removeAction(row.id)}
+          <Flex direction="column" gap="5">
+          {actionRows.map((row) => (
+            <Flex
+              key={row.id}
+              gap="2"
+              align={
+                row.type === "send_templated_email" ||
+                row.type === "run_integration" ||
+                row.type === "create_draft" ||
+                row.type === "notify"
+                  ? "start"
+                  : "center"
+              }
+              wrap="wrap"
             >
-              <X size={18} />
-            </IconButton>
+              <Box style={{ flex: "0 1 160px", minWidth: 120 }}>
+                <Select.Root
+                  value={row.type || EMPTY_VALUE}
+                  onValueChange={(v) => {
+                    const type = v === EMPTY_VALUE ? "" : (v as ActionRowState["type"]);
+                    const patch: Partial<ActionRowState> = { type };
+                    if (type === "send_templated_email" && !row.emailTemplateKey.trim() && emailTemplates[0]) {
+                      patch.emailTemplateKey = emailTemplates[0].templateKey;
+                      patch.createDraft = true;
+                      if (!row.fromAliasEmail.trim() && defaultFromAlias) {
+                        patch.fromAliasEmail = defaultFromAlias;
+                      }
+                    }
+                    if (type === "run_integration" && !row.integrationId.trim() && integrations[0]) {
+                      patch.integrationId = integrations[0].id;
+                    }
+                    updateAction(row.id, patch);
+                  }}
+                  disabled={disabled}
+                >
+                  <Select.Trigger variant="surface" style={{ width: "100%", minHeight: 36 }} />
+                  <Select.Content position="popper">
+                    <Select.Item value={EMPTY_VALUE}>Type…</Select.Item>
+                    <Select.Item value="send_templated_email">Send email</Select.Item>
+                    <Select.Item value="run_integration">Run integration</Select.Item>
+                    {row.type === "create_draft" ? (
+                      <Select.Item value="create_draft">Legacy: create_draft</Select.Item>
+                    ) : null}
+                    {row.type === "notify" ? (
+                      <Select.Item value="notify">Legacy: notify</Select.Item>
+                    ) : null}
+                  </Select.Content>
+                </Select.Root>
+              </Box>
+
+              {row.type === "create_draft" || row.type === "notify" ? (
+                <Text size="2" color="gray" style={{ flex: "1 1 240px", minWidth: 0 }}>
+                  This action type is no longer supported in the UI. Choose &quot;Send email&quot; or &quot;Run
+                  integration&quot; and save, or leave as-is to keep the stored JSON unchanged.
+                </Text>
+              ) : null}
+
+              {row.type === "send_templated_email" ? (
+                <SendEmailActionFields
+                  row={row}
+                  emailTemplates={emailTemplates}
+                  sendAsOptions={sendAsOptions}
+                defaultFromAlias={defaultFromAlias}
+                  disabled={disabled}
+                  updateAction={updateAction}
+                />
+              ) : null}
+
+              {row.type === "run_integration" ? (
+                <RunIntegrationActionFields
+                  row={row}
+                  integrations={integrations}
+                  disabled={disabled}
+                  updateAction={updateAction}
+                />
+              ) : null}
+
+              <IconButton
+                type="button"
+                variant="ghost"
+                color="gray"
+                disabled={disabled || actionRows.length <= 1}
+                aria-label="Remove action"
+                onClick={() => removeAction(row.id)}
+              >
+                <X size={18} />
+              </IconButton>
+            </Flex>
+          ))}
           </Flex>
-        ))}
+
+          <div>
+            <Button
+              type="button"
+              variant="soft"
+              color="gray"
+              size="2"
+              disabled={disabled}
+              onClick={() => setActionRows((prev) => [...prev, emptyActionRow()])}
+            >
+              + Add action
+            </Button>
+          </div>
         </Flex>
+      ) : null}
 
-        <div>
-          <Button
-            type="button"
-            variant="soft"
-            color="gray"
-            size="2"
-            disabled={disabled}
-            onClick={() => setActionRows((prev) => [...prev, emptyActionRow()])}
-          >
-            + Add action
-          </Button>
-        </div>
-      </Flex>
-
-      <Flex gap="3" align="center" wrap="wrap">
-        <Button type="submit" disabled={disabled}>
+      <Flex gap="3" align="center" justify="end" wrap="wrap">
+        <Button type="submit" disabled={disabled || !hasConditions || !hasActions}>
           {submitLabel}
         </Button>
-        {footer}
+        {footer
+          ? React.isValidElement(footer)
+            ? React.cloneElement(footer, {
+                disabled:
+                  disabled ||
+                  !hasConditions ||
+                  !hasActions ||
+                  Boolean((footer.props as { disabled?: boolean }).disabled),
+              } as Record<string, unknown>)
+            : footer
+          : null}
       </Flex>
     </Flex>
   );

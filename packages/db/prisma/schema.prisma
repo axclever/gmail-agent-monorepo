@@ -60,9 +60,24 @@ model User {
 
   gmailMailboxes GmailMailbox[]
   integrations   Integration[]
+  apiTokens      UserApiToken[]
+  draftReviews   DraftReview[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+}
+
+model UserApiToken {
+  id         String    @id @default(cuid())
+  userId     String
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name       String
+  tokenHash  String    @unique
+  tokenHint  String
+  createdAt  DateTime  @default(now())
+  lastUsedAt DateTime?
+
+  @@index([userId, createdAt])
 }
 
 model Integration {
@@ -127,6 +142,8 @@ model Person {
   id          String    @id @default(cuid())
   email       String    @unique
   name        String?
+  /// One-level custom attributes (e.g. entity_type, company_name) managed by sync/API.
+  customFieldsJson Json?
   firstSeenAt DateTime?
   lastSeenAt  DateTime?
   createdAt   DateTime  @default(now())
@@ -148,6 +165,8 @@ model GmailMailbox {
   email           String
   /// Lowercased send-as / alias addresses from Gmail (users.settings.sendAs); refreshed on connect and each sync.
   sendAsEmails    String[] @default([])
+  /// Optional default sender for future outbound sends/drafts when rule does not specify explicit alias.
+  defaultSendAsEmail String?
   googleAccountId String?
 
   /// Tokens for mailbox access, separate from app auth if needed
@@ -428,4 +447,23 @@ model GmailAction {
   @@index([integrationId])
   @@index([status])
   @@index([type])
+}
+
+model DraftReview {
+  id              String   @id
+  userId          String?
+  user            User?    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  status          String   @default("PENDING")
+  subject         String?
+  draftBody       String   @db.Text
+  fromAliasEmail  String?
+  telegramUserId  String?
+  lastFeedback    String?
+  approvedAt      DateTime?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([status])
+  @@index([createdAt])
+  @@index([userId])
 }

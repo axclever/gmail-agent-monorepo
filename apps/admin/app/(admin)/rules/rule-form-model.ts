@@ -9,11 +9,29 @@ export type ConditionRowState = {
 
 export type ActionRowState = {
   id: string;
-  type: "create_draft" | "notify" | "send_templated_email" | "";
-  templateId: string;
-  channel: string;
+  type: "send_templated_email" | "run_integration" | "create_draft" | "notify" | "";
   /** GmailEmailTemplate.templateKey */
   emailTemplateKey: string;
+  /** For send_templated_email: when true, create Gmail draft instead of immediate send. */
+  createDraft: boolean;
+  /** For send_templated_email: explicit sender alias (Gmail Send-as). */
+  fromAliasEmail: string;
+  /** Integration.id for run_integration */
+  integrationId: string;
+  /** Legacy create_draft only — kept for round-trip when rule still uses old JSON. */
+  templateId: string;
+  /** Legacy notify only — kept for round-trip when rule still uses old JSON. */
+  channel: string;
+};
+
+export type RuleIntegrationOption = {
+  id: string;
+  name: string;
+  type: string;
+};
+
+export type RuleSendAsOption = {
+  email: string;
 };
 
 export type RuleEmailTemplateOption = {
@@ -27,6 +45,7 @@ export type RuleEmailTemplateOption = {
 export const THREAD_CONDITION_FIELDS: { value: string; label: string }[] = [
   { value: "thread.lastMessageDirection", label: "Thread · last message direction" },
   { value: "thread.intent", label: "Thread · last message intent" },
+  { value: "person.senderAttr", label: "Person · sender attribute" },
 ];
 
 export const THREAD_LAST_MESSAGE_DIRECTION_OPTIONS: { value: string; label: string }[] = [
@@ -54,9 +73,6 @@ export const CONDITION_OPERATORS: { value: string; label: string }[] = [
   { value: "contains_any", label: "contains any" },
 ];
 
-export const TEMPLATE_OPTIONS = ["lead_followup_v1"] as const;
-export const CHANNEL_OPTIONS = ["telegram"] as const;
-
 export const BOOLEAN_FIELDS = new Set([
   "classification.replyNeeded",
   "thread.hasUnrepliedInbound",
@@ -67,6 +83,7 @@ export const BOOLEAN_FIELDS = new Set([
 const SUPPORTED_THREAD_CONDITION_FIELDS = new Set([
   "thread.lastMessageDirection",
   "thread.intent",
+  "person.senderAttr",
 ]);
 
 export function isSupportedThreadConditionField(field: string): boolean {
@@ -93,9 +110,12 @@ export function emptyActionRow(): ActionRowState {
   return {
     id: newRowId(),
     type: "",
+    emailTemplateKey: "",
+    createDraft: true,
+    fromAliasEmail: "",
+    integrationId: "",
     templateId: "lead_followup_v1",
     channel: "telegram",
-    emailTemplateKey: "",
   };
 }
 
@@ -134,13 +154,23 @@ export function parseConditionValue(field: string, operator: string, valueStr: s
 export function conditionsToJson(rows: ConditionRowState[]): unknown[] {
   const valid = rows.filter((r) => r.field.trim());
   return valid.map((r, i) => {
-    const field = r.field.trim();
-    const simple = isSupportedThreadConditionField(field);
+    const fieldRaw = r.field.trim();
+    const senderAttr = fieldRaw === "person.senderAttr" ? r.valueStr.trim() : "";
+    const eqIdx = senderAttr.indexOf("=");
+    const senderKey = eqIdx > 0 ? senderAttr.slice(0, eqIdx).trim() : "";
+    const senderValue = eqIdx > 0 ? senderAttr.slice(eqIdx + 1).trim() : senderAttr;
+    const field = fieldRaw === "person.senderAttr" && senderKey ? `person.sender.${senderKey}` : fieldRaw;
+    const simple = isSupportedThreadConditionField(fieldRaw);
     return {
       ...(i > 0 ? { join: r.join } : {}),
       field,
       operator: simple ? "equals" : r.operator.trim() || "equals",
-      value: simple ? r.valueStr.trim() : parseConditionValue(field, r.operator, r.valueStr),
+      value:
+        fieldRaw === "person.senderAttr"
+          ? senderValue
+          : simple
+            ? r.valueStr.trim()
+            : parseConditionValue(field, r.operator, r.valueStr),
     };
   });
 }
@@ -151,41 +181,77 @@ export function conditionsFromJson(json: unknown): ConditionRowState[] {
   }
   return json.map((item, i) => {
     const o = item as Record<string, unknown>;
-    const field = String(o.field ?? "");
+    const rawField = String(o.field ?? "");
+    const senderPrefix = "person.sender.";
+    const isSenderField = rawField.startsWith(senderPrefix);
+    const field = isSenderField ? "person.senderAttr" : rawField;
+    const senderKey = isSenderField ? rawField.slice(senderPrefix.length).trim() : "";
+    const senderValueStr = valueToInputString(rawField, o.value);
     return {
       id: newRowId(),
       join: i === 0 ? "AND" : String(o.join || "AND").toUpperCase() === "OR" ? "OR" : "AND",
       field,
-      operator: String(o.operator ?? "equals"),
-      valueStr: valueToInputString(field, o.value),
+      operator: isSenderField ? "equals" : String(o.operator ?? "equals"),
+      valueStr: isSenderField ? `${senderKey}=${senderValueStr}` : valueToInputString(field, o.value),
     };
   });
 }
 
+type PersistedActionRow = ActionRowState & {
+  type: "create_draft" | "notify" | "send_templated_email" | "run_integration";
+};
+
 export function actionsToJson(rows: ActionRowState[]): unknown[] {
   return rows
-    .filter((r) => r.type === "create_draft" || r.type === "notify" || r.type === "send_templated_email")
+    .filter(
+      (r): r is PersistedActionRow =>
+        r.type === "create_draft" ||
+        r.type === "notify" ||
+        r.type === "send_templated_email" ||
+        r.type === "run_integration",
+    )
     .map((r) => {
-      if (r.type === "create_draft") {
-        return {
-          type: "create_draft",
-          params: { templateId: r.templateId.trim() || "lead_followup_v1" },
-        };
-      }
-      if (r.type === "send_templated_email") {
-        const key = r.emailTemplateKey.trim();
-        if (!key) {
-          throw new Error("send_templated_email: choose a template key.");
+      switch (r.type) {
+        case "create_draft":
+          return {
+            type: "create_draft",
+            params: { templateId: r.templateId.trim() || "lead_followup_v1" },
+          };
+        case "notify":
+          return {
+            type: "notify",
+            params: { channel: r.channel.trim() || "telegram" },
+          };
+        case "send_templated_email": {
+          const key = r.emailTemplateKey.trim();
+          if (!key) {
+            throw new Error("send_templated_email: choose a template key.");
+          }
+          return {
+            type: "send_templated_email",
+            params: {
+              templateKey: key,
+              variables: {},
+              createDraft: r.createDraft !== false,
+              ...(r.fromAliasEmail.trim()
+                ? { fromAliasEmail: r.fromAliasEmail.trim().toLowerCase() }
+                : {}),
+            },
+          };
         }
-        return {
-          type: "send_templated_email",
-          params: { templateKey: key, variables: {} },
-        };
+        case "run_integration": {
+          const id = r.integrationId.trim();
+          if (!id) {
+            throw new Error("run_integration: choose an integration.");
+          }
+          return {
+            type: "run_integration",
+            params: { integrationId: id },
+          };
+        }
+        default:
+          throw new Error(`Unexpected action type: ${String((r as { type?: string }).type)}`);
       }
-      return {
-        type: "notify",
-        params: { channel: r.channel.trim() || "telegram" },
-      };
     });
 }
 
@@ -202,25 +268,45 @@ export function actionsFromJson(json: unknown): ActionRowState[] {
       out.push({
         id: newRowId(),
         type: "create_draft",
+        emailTemplateKey: "",
+        createDraft: true,
+        fromAliasEmail: "",
+        integrationId: "",
         templateId: String(p.templateId ?? "lead_followup_v1"),
         channel: "telegram",
-        emailTemplateKey: "",
       });
     } else if (t === "notify") {
       out.push({
         id: newRowId(),
         type: "notify",
+        emailTemplateKey: "",
+        createDraft: true,
+        fromAliasEmail: "",
+        integrationId: "",
         templateId: "lead_followup_v1",
         channel: String(p.channel ?? "telegram"),
-        emailTemplateKey: "",
       });
     } else if (t === "send_templated_email") {
       out.push({
         id: newRowId(),
         type: "send_templated_email",
+        emailTemplateKey: String(p.templateKey ?? ""),
+        createDraft: p.createDraft === false ? false : true,
+        fromAliasEmail: String(p.fromAliasEmail ?? ""),
+        integrationId: "",
         templateId: "lead_followup_v1",
         channel: "telegram",
-        emailTemplateKey: String(p.templateKey ?? ""),
+      });
+    } else if (t === "run_integration") {
+      out.push({
+        id: newRowId(),
+        type: "run_integration",
+        emailTemplateKey: "",
+        createDraft: true,
+        fromAliasEmail: "",
+        integrationId: String(p.integrationId ?? ""),
+        templateId: "lead_followup_v1",
+        channel: "telegram",
       });
     }
   }

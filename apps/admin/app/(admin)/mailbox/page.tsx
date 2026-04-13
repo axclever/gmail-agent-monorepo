@@ -3,6 +3,7 @@ import type { ReactNode } from "react";
 import { Badge, Box, Button, Card, Flex, Heading, Separator, Text } from "@radix-ui/themes";
 import { prisma } from "@gmail-agent/db";
 import { requireAdmin } from "../(protected)/require-admin";
+import { DefaultSendAsButtons } from "./default-send-as-buttons";
 
 export const dynamic = "force-dynamic";
 
@@ -35,6 +36,7 @@ export default async function MailboxPage() {
       lastSyncedAt: true,
       lastHistoryId: true,
       sendAsEmails: true,
+      defaultSendAsEmail: true,
       createdAt: true,
       updatedAt: true,
     },
@@ -85,6 +87,11 @@ export default async function MailboxPage() {
               />
               <Row label="Last agent sync" value={fmtDate(mailbox.lastSyncedAt)} />
               <Row label="Gmail history id" value={mailbox.lastHistoryId || "—"} mono />
+              <Row
+                label="Default send alias"
+                value={mailbox.defaultSendAsEmail || "Primary mailbox address"}
+                mono
+              />
               <Row label="Created" value={fmtDate(mailbox.createdAt)} />
               <Row label="Updated" value={fmtDate(mailbox.updatedAt)} />
             </Flex>
@@ -119,14 +126,20 @@ export default async function MailboxPage() {
                   paddingLeft: "1.25rem",
                   display: "flex",
                   flexDirection: "column",
-                  gap: "var(--space-1)",
+                  gap: "var(--space-2)",
                 }}
               >
-                {mailbox.sendAsEmails.map((email) => (
+                {[mailbox.email, ...mailbox.sendAsEmails]
+                  .map((email) => email.trim().toLowerCase())
+                  .filter(Boolean)
+                  .filter((email, idx, arr) => arr.indexOf(email) === idx)
+                  .map((email) => (
                   <li key={email}>
-                    <Text size="2" style={{ fontFamily: "var(--font-mono, ui-monospace, monospace)" }}>
-                      {email}
-                    </Text>
+                    <DefaultSendAsButtons
+                      mailboxId={mailbox.id}
+                      email={email}
+                      isDefault={mailbox.defaultSendAsEmail?.trim().toLowerCase() === email}
+                    />
                   </li>
                 ))}
               </ul>

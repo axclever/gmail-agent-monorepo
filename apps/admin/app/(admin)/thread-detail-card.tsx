@@ -154,6 +154,10 @@ export function ThreadDetailCard({
           >
             {rulesLine}
           </Text>
+          <Text size="1" color="gray" style={{ display: "block", marginTop: 4, lineHeight: 1.45 }}>
+            Action required:{" "}
+            {thread.actionRequired === true ? "true" : thread.actionRequired === false ? "false" : "-"}
+          </Text>
           <Separator size="4" style={{ marginTop: 10 }} />
           <Text
             size="3"

@@ -100,7 +100,7 @@ export async function previewRuleConditionMatches(conditions: unknown[]) {
           htmlBody: true,
           direction: true,
           gmailInternalDate: true,
-          fromPerson: { select: { email: true } },
+          fromPerson: { select: { email: true, customFieldsJson: true } },
         },
       },
     },
