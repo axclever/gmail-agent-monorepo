@@ -9,12 +9,13 @@ const { prisma } = require("./persistence");
 const { createGmailForMailbox } = require("./gmail-auth");
 const { sendTemplatedEmail } = require("./send-templated-email");
 const { composeDraftReviewAction } = require("./compose-draft-review");
+const { sendTelegramThreadSummaryAction } = require("./send-telegram-thread-summary");
 
 async function executePendingActionsForMailbox(mailbox) {
   const pending = await prisma.gmailAction.findMany({
     where: {
       status: "PENDING",
-      type: { in: ["send_templated_email", "draft_review_request"] },
+      type: { in: ["send_templated_email", "draft_review_request", "telegram_thread_summary"] },
       decision: { mailboxId: mailbox.id },
     },
     take: 25,
@@ -35,7 +36,10 @@ async function executePendingActionsForMailbox(mailbox) {
 
   for (const action of pending) {
     const payload = action.payloadJson && typeof action.payloadJson === "object" ? action.payloadJson : {};
-    const params = payload.params && typeof payload.params === "object" && !Array.isArray(payload.params) ? payload.params : {};
+    const params =
+      payload.params && typeof payload.params === "object" && !Array.isArray(payload.params)
+        ? payload.params
+        : {};
 
     try {
       await prisma.gmailAction.update({
@@ -54,6 +58,7 @@ async function executePendingActionsForMailbox(mailbox) {
         sendAsEmails: mailbox.sendAsEmails || [],
         defaultSendAsEmail: mailbox.defaultSendAsEmail || null,
       };
+
       let result;
       if (action.type === "send_templated_email") {
         result = await sendTemplatedEmail({
@@ -65,6 +70,11 @@ async function executePendingActionsForMailbox(mailbox) {
       } else if (action.type === "draft_review_request") {
         result = await composeDraftReviewAction({
           mailbox: mailboxContext,
+          threadId: action.decision.threadId,
+          actionId: action.id,
+        });
+      } else if (action.type === "telegram_thread_summary") {
+        result = await sendTelegramThreadSummaryAction({
           threadId: action.decision.threadId,
           actionId: action.id,
         });

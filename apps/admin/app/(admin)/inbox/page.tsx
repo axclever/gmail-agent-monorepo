@@ -82,7 +82,6 @@ export default async function InboxPage({
             <Flex direction="column" gap="2">
               {threads.map((t) => {
                 const processed = Boolean(t.summary.raw?.length);
-                const actionRequired = t.actionRequired === true || t.summary.actionRequired === true;
                 const isSelected = selectedId === t.id;
                 return (
                   <Link
@@ -102,7 +101,7 @@ export default async function InboxPage({
                           paddingTop: "0.625rem",
                           paddingLeft: "0.75rem",
                           paddingRight: "0.75rem",
-                          paddingBottom: actionRequired ? "2rem" : "0.625rem",
+                          paddingBottom: "0.625rem",
                           background: !processed ? "var(--gray-3)" : undefined,
                         } as CSSProperties
                       }
@@ -164,25 +163,6 @@ export default async function InboxPage({
                           {t.summary.intent || "no-intent"}
                         </Badge>
                       </Flex>
-                      {actionRequired ? (
-                        <Box
-                          style={{
-                            position: "absolute",
-                            bottom: "var(--space-2)",
-                            right: "var(--space-2)",
-                            backgroundColor: "var(--red-9)",
-                            color: "#fff",
-                            fontSize: 11,
-                            fontWeight: 600,
-                            letterSpacing: "0.02em",
-                            lineHeight: 1.25,
-                            padding: "5px 10px",
-                            borderRadius: "var(--radius-2)",
-                          }}
-                        >
-                          action required
-                        </Box>
-                      ) : null}
                     </Card>
                   </Link>
                 );

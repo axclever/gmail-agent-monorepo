@@ -166,6 +166,15 @@ function ComposeDraftActionFields() {
   );
 }
 
+function TelegramThreadSummaryActionFields() {
+  return (
+    <Text size="2" color="gray" style={{ flex: "1 1 320px", minWidth: 220 }}>
+      Sends a thread summary card to Telegram: subject, last message time, last email from, direction, summary info,
+      summary text, and direct link to the thread.
+    </Text>
+  );
+}
+
 function RunIntegrationActionFields({
   row,
   integrations,
@@ -586,6 +595,7 @@ export function RuleFormFields({
                 row.type === "send_templated_email" ||
                 row.type === "run_integration" ||
                 row.type === "draft_review_request" ||
+                row.type === "telegram_thread_summary" ||
                 row.type === "create_draft" ||
                 row.type === "notify"
                   ? "start"
@@ -617,6 +627,7 @@ export function RuleFormFields({
                     <Select.Item value={EMPTY_VALUE}>Type…</Select.Item>
                     <Select.Item value="send_templated_email">Send email</Select.Item>
                     <Select.Item value="draft_review_request">Compose draft</Select.Item>
+                    <Select.Item value="telegram_thread_summary">Telegram thread summary</Select.Item>
                     <Select.Item value="run_integration">Run integration</Select.Item>
                     {row.type === "create_draft" ? (
                       <Select.Item value="create_draft">Legacy: create_draft</Select.Item>
@@ -656,6 +667,8 @@ export function RuleFormFields({
               ) : null}
 
               {row.type === "draft_review_request" ? <ComposeDraftActionFields /> : null}
+
+              {row.type === "telegram_thread_summary" ? <TelegramThreadSummaryActionFields /> : null}
 
               <IconButton
                 type="button"

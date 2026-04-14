@@ -67,6 +67,7 @@ function countRuleActions(actions: unknown): number {
       t === "notify" ||
       t === "send_templated_email" ||
       t === "draft_review_request" ||
+      t === "telegram_thread_summary" ||
       t === "run_integration"
     );
   }).length;

@@ -9,7 +9,7 @@ export type ConditionRowState = {
 
 export type ActionRowState = {
   id: string;
-  type: "send_templated_email" | "run_integration" | "draft_review_request" | "create_draft" | "notify" | "";
+  type: "send_templated_email" | "run_integration" | "draft_review_request" | "telegram_thread_summary" | "create_draft" | "notify" | "";
   /** GmailEmailTemplate.templateKey */
   emailTemplateKey: string;
   /** For send_templated_email: explicit sender alias (Gmail Send-as). */
@@ -195,7 +195,7 @@ export function conditionsFromJson(json: unknown): ConditionRowState[] {
 }
 
 type PersistedActionRow = ActionRowState & {
-  type: "create_draft" | "notify" | "send_templated_email" | "run_integration" | "draft_review_request";
+  type: "create_draft" | "notify" | "send_templated_email" | "run_integration" | "draft_review_request" | "telegram_thread_summary";
 };
 
 export function actionsToJson(rows: ActionRowState[]): unknown[] {
@@ -206,7 +206,8 @@ export function actionsToJson(rows: ActionRowState[]): unknown[] {
         r.type === "notify" ||
         r.type === "send_templated_email" ||
         r.type === "run_integration" ||
-        r.type === "draft_review_request",
+        r.type === "draft_review_request" ||
+        r.type === "telegram_thread_summary",
     )
     .map((r) => {
       switch (r.type) {
@@ -239,6 +240,11 @@ export function actionsToJson(rows: ActionRowState[]): unknown[] {
         case "draft_review_request":
           return {
             type: "draft_review_request",
+            params: {},
+          };
+        case "telegram_thread_summary":
+          return {
+            type: "telegram_thread_summary",
             params: {},
           };
         case "run_integration": {
@@ -310,6 +316,16 @@ export function actionsFromJson(json: unknown): ActionRowState[] {
       out.push({
         id: newRowId(),
         type: "draft_review_request",
+        emailTemplateKey: "",
+        fromAliasEmail: "",
+        integrationId: "",
+        templateId: "lead_followup_v1",
+        channel: "telegram",
+      });
+    } else if (t === "telegram_thread_summary") {
+      out.push({
+        id: newRowId(),
+        type: "telegram_thread_summary",
         emailTemplateKey: "",
         fromAliasEmail: "",
         integrationId: "",
