@@ -10,6 +10,7 @@ const CLASSIFIER_CONFIDENCE_THRESHOLD = 0.72;
 const TELEGRAM_BOT_URL = String(process.env.TELEGRAM_BOT_URL || "").trim();
 const TELEGRAM_BOT_API_TOKEN = String(process.env.TELEGRAM_BOT_API_TOKEN || "").trim();
 const TELEGRAM_BOT_TARGET = String(process.env.TELEGRAM_BOT_TARGET || "onpro-logs-channel").trim();
+const GMAIL_AGENT_ADMIN_URL = String(process.env.GMAIL_AGENT_ADMIN_URL || "").trim();
 
 /** When false, the agent only creates `GmailAction` rows; it does not send mail or run side effects. */
 const EXECUTE_PENDING_ACTIONS = process.env.EXECUTE_PENDING_ACTIONS === "true";
@@ -41,6 +42,7 @@ module.exports = {
   TELEGRAM_BOT_URL,
   TELEGRAM_BOT_API_TOKEN,
   TELEGRAM_BOT_TARGET,
+  GMAIL_AGENT_ADMIN_URL,
   EXECUTE_PENDING_ACTIONS,
   ensureLocalEnvLoaded,
 };

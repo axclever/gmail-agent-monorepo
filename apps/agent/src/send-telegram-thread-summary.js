@@ -1,5 +1,10 @@
 const { prisma } = require("./persistence");
-const { TELEGRAM_BOT_URL, TELEGRAM_BOT_API_TOKEN, TELEGRAM_BOT_TARGET } = require("./env");
+const {
+  TELEGRAM_BOT_URL,
+  TELEGRAM_BOT_API_TOKEN,
+  TELEGRAM_BOT_TARGET,
+  GMAIL_AGENT_ADMIN_URL,
+} = require("./env");
 
 function toText(v) {
   if (v === null || v === undefined) return "-";
@@ -61,7 +66,9 @@ async function sendTelegramThreadSummaryAction({ threadId, actionId }) {
   if (!thread) throw new Error("telegram_thread_summary: thread not found");
 
   const lastEmailFrom = thread.messages[0]?.fromPerson?.email || "-";
-  const threadLinkBase = String(process.env.NEXTAUTH_URL || "http://localhost:3000").replace(/\/$/, "");
+  const threadLinkBase = String(
+    GMAIL_AGENT_ADMIN_URL || process.env.NEXTAUTH_URL || "https://agentic.leadround.io",
+  ).replace(/\/$/, "");
   const linkToThread = `${threadLinkBase}/inbox?threadId=${encodeURIComponent(thread.id)}`;
 
   const payload = {
