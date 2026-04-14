@@ -15,10 +15,14 @@ ENV DIRECT_URL=${DIRECT_URL}
 
 COPY package.json package-lock.json* ./
 COPY packages/db/package.json ./packages/db/
+COPY packages/rule-conditions/package.json ./packages/rule-conditions/
+COPY packages/email-templates/package.json ./packages/email-templates/
 COPY apps/agent/package.json ./apps/agent/
 
 COPY packages/db/prisma ./packages/db/prisma
 COPY packages/db/src ./packages/db/src
+COPY packages/rule-conditions ./packages/rule-conditions
+COPY packages/email-templates ./packages/email-templates
 COPY apps/agent ./apps/agent
 
 RUN npm install

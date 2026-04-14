@@ -10,6 +10,8 @@ on:
     paths:
       - "apps/agent/**"
       - "packages/db/**"
+      - "packages/rule-conditions/**"
+      - "packages/email-templates/**"
       - "package.json"
       - "package-lock.json"
       - ".github/workflows/deploy.yml"
