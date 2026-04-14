@@ -73,12 +73,28 @@ export default async function AdminLayout({
         }}
       >
         <Box style={{ marginBottom: "1.25rem" }}>
-          <Box style={{ fontSize: 18, fontWeight: 600, lineHeight: 1.1 }}>
-            Agentic
-          </Box>
-          <Box style={{ fontSize: 13, color: "var(--gray-11)", marginTop: 4 }}>
-            by Leadround
-          </Box>
+          <Flex align="center" gap="2">
+            <Box
+              style={{
+                width: 24,
+                height: 24,
+                borderRadius: 9999,
+                display: "grid",
+                placeItems: "center",
+                border: "1px solid var(--gray-6)",
+                color: "var(--gray-12)",
+                fontWeight: 700,
+                lineHeight: 1,
+                fontSize: 14,
+              }}
+              aria-hidden
+            >
+              @
+            </Box>
+            <Box style={{ fontSize: 18, fontWeight: 600, lineHeight: 1.1 }}>
+              Gmail agent
+            </Box>
+          </Flex>
         </Box>
         {connectedMailbox ? (
           <Box
